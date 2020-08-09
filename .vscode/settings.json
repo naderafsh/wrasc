@@ -1,0 +1,6 @@
+{
+    "python.linting.enabled": true,
+    "python.linting.pycodestyleEnabled": false,
+    "python.linting.pylintEnabled": true,
+    "python.pythonPath": "/home/afsharn/.cache/pypoetry/virtualenvs/wrasc-Pu1oSVUl-py3.8"
+}
