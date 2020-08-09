@@ -25,7 +25,7 @@ else:
 
 settings["python.pythonPath"] = venv_path
 # Add the settings for linting
-settings["python.linting.pycodestyleEnabled"] = True
+settings["python.linting.pycodestyleEnabled"] = False
 settings["python.linting.enabled"] = True
 settings["python.linting.pylintEnabled"] = True
 

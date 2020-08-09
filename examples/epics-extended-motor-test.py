@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #-------------------------------
 import argparse
 
@@ -37,7 +39,7 @@ list_of_motors = set()
 default_eprefix = 'WORKS'
 
 # read text file listing of all epics devices here
-epics_devices_file = '/beamline/perforce/Personal/afsharn/SCS/output/lastsnapshot.snapshot'
+epics_devices_file = 'examples/data/lastsnapshot.snapshot'
 
 for line in open(epics_devices_file):
     li=line.strip()

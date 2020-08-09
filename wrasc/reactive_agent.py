@@ -40,7 +40,7 @@ from typing import Set, Any, List, Union, Tuple
 
 import numpy as np
 from epics import PV
-from reactive_utils import myEsc, cls, retrieve_name, retrieve_name_in_globals
+from wrasc.reactive_utils import myEsc, cls, retrieve_name, retrieve_name_in_globals
 import re
 from collections import OrderedDict
 import logging
@@ -60,10 +60,10 @@ If you get compile error at pass 3, "max iteration" it is most likely due to a c
 
 """
 
-dmodel_log_filename = os.path.join('output', 'dmodel_compiler' + '.log')
-info_log_filename = os.path.join('output', 'reactive_agents_process' + '.log')
+dmodel_log_filename = os.path.join(os.path.expanduser(path) + '/wrasc_output', 'dmodel_compiler' + '.log')
+info_log_filename = os.path.join(os.path.expanduser(path) + '/wrasc_output', 'reactive_agents_process' + '.log')
 
-Path("output").mkdir(parents=True, exist_ok=True)
+Path("~/wrasc_output").mkdir(parents=True, exist_ok=True)
 
 #Create two logger files
 formatter = logging.Formatter('%(asctime)s %(message)s', datefmt="%H:%M:%S")
@@ -101,7 +101,7 @@ var_debug_format = '[{0}] {2} {3} "{1}"'
 
 # TODO remove hardcoded filename
 excel_out_file_name = 'excel_output.tpv'
-excel_out_path = r'output'
+excel_out_path = ros.path.expanduser(path) + '/wrasc_output'
 html_out_filename = 'SCS-Poll-Vars.html'
 html_out_path = excel_out_path
 
@@ -947,23 +947,6 @@ def action(sorted_ag_list, ag_states, debug=False):
             # this is a RA command:
             ra_commands.add(return_message)
 
-        # abbreviated_status = status[0][0]+status[1][0]
-
-        # if agent.verbose > 0:
-        #     _str = '>' + agent_var_debug_format. \
-        #         format(agname, abbreviated_status, return_message, '', '' if agent.unit is None else agent.unit)
-
-        #     print_str = ''
-        #     if agent.poll.Changed and agent.verbose > 1:
-        #         print_str = '*' + _str
-        #     if agent.verbose > 2:
-        #         print_str = ':' + _str
-
-        #     if len(print_str) and debug:
-        #         logger.debug(print_str)
-        #         # print(print_str)
-        #         _this_cycle_has_print = True
-
         ag_states[status[1]] += 1
         sorted_ag_list[agname].update({'Status': status})
 
@@ -1283,8 +1266,8 @@ def save_device_configs(device_dict):
     # now save the config
 
     for device_name in device_dict:
-        master_config_filename = os.path.join('output', device_name + '_master_config.yml')
-        device_config_filename = os.path.join('output', device_name + 'device_config.yml')
+        master_config_filename = os.path.join(os.path.expanduser(path) + '/wrasc_output', device_name + '_master_config.yml')
+        device_config_filename = os.path.join(os.path.expanduser(path) + '/wrasc_output', device_name + 'device_config.yml')
         device = device_dict[device_name]
         assert isinstance(device, Device)
 

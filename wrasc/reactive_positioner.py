@@ -35,7 +35,7 @@ _VERBOSE_ = 2
 
 from epics import PV
 
-import reactive_agent as ra
+import wrasc.reactive_agent as ra
 
 
 
