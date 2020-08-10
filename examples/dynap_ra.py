@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 #
-# $File: //ASP/Personal/afsharn/SCS/dynap_ra.py $
-# $Revision: #2 $
-# $DateTime: 2020/07/22 16:54:13 $
+# $File: //ASP/Personal/afsharn/wrasc/examples/dynap_ra.py $
+# $Revision: #1 $
+# $DateTime: 2020/08/09 22:35:08 $
 # Last checked in by: $Author: afsharn $
 #
 # Description

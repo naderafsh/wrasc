@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 #
-# $File: //ASP/Personal/afsharn/SCS/reactive_agent.py $
-# $Revision: #11 $
-# $DateTime: 2020/05/27 00:06:59 $
+# $File: //ASP/Personal/afsharn/wrasc/wrasc/reactive_agent.py $
+# $Revision: #1 $
+# $DateTime: 2020/08/09 22:35:08 $
 # Last checked in by: $Author: afsharn $
 #
 # Description
@@ -60,10 +60,12 @@ If you get compile error at pass 3, "max iteration" it is most likely due to a c
 
 """
 
-dmodel_log_filename = os.path.join(os.path.expanduser(path) + '/wrasc_output', 'dmodel_compiler' + '.log')
-info_log_filename = os.path.join(os.path.expanduser(path) + '/wrasc_output', 'reactive_agents_process' + '.log')
+output_dir = os.path.expanduser("~") + '/wrasc_output' 
 
-Path("~/wrasc_output").mkdir(parents=True, exist_ok=True)
+dmodel_log_filename = os.path.join(output_dir, 'dmodel_compiler' + '.log')
+info_log_filename = os.path.join(output_dir, 'reactive_agents_process' + '.log')
+
+Path(output_dir).mkdir(parents=True, exist_ok=True)
 
 #Create two logger files
 formatter = logging.Formatter('%(asctime)s %(message)s', datefmt="%H:%M:%S")
@@ -101,7 +103,7 @@ var_debug_format = '[{0}] {2} {3} "{1}"'
 
 # TODO remove hardcoded filename
 excel_out_file_name = 'excel_output.tpv'
-excel_out_path = ros.path.expanduser(path) + '/wrasc_output'
+excel_out_path = output_dir
 html_out_filename = 'SCS-Poll-Vars.html'
 html_out_path = excel_out_path
 
@@ -1266,8 +1268,8 @@ def save_device_configs(device_dict):
     # now save the config
 
     for device_name in device_dict:
-        master_config_filename = os.path.join(os.path.expanduser(path) + '/wrasc_output', device_name + '_master_config.yml')
-        device_config_filename = os.path.join(os.path.expanduser(path) + '/wrasc_output', device_name + 'device_config.yml')
+        master_config_filename = os.path.join(output_dir, device_name + '_master_config.yml')
+        device_config_filename = os.path.join(output_dir, device_name + 'device_config.yml')
         device = device_dict[device_name]
         assert isinstance(device, Device)
 

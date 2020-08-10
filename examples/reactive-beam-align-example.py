@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 #
-# $File: //ASP/Personal/afsharn/SCS/reactive-beam-align-example.py $
-# $Revision: #3 $
-# $DateTime: 2020/04/23 23:34:43 $
+# $File: //ASP/Personal/afsharn/wrasc/examples/reactive-beam-align-example.py $
+# $Revision: #1 $
+# $DateTime: 2020/08/09 22:35:08 $
 # Last checked in by: $Author: afsharn $
 #
 # Description

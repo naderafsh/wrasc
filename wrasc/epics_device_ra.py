@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 #
-# $File: //ASP/Personal/afsharn/SCS/epics_device_ra.py $
-# $Revision: #3 $
-# $DateTime: 2020/05/27 00:06:59 $
+# $File: //ASP/Personal/afsharn/wrasc/wrasc/epics_device_ra.py $
+# $Revision: #1 $
+# $DateTime: 2020/08/09 22:35:08 $
 # Last checked in by: $Author: afsharn $
 #
 # Description

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 #
-# $File: //ASP/Personal/afsharn/SCS/xfm-rascan2-indent.py $
-# $Revision: #2 $
-# $DateTime: 2020/04/23 22:18:16 $
+# $File: //ASP/Personal/afsharn/wrasc/examples/xfm-rascan2-indent.py $
+# $Revision: #1 $
+# $DateTime: 2020/08/09 22:35:08 $
 # Last checked in by: $Author: afsharn $
 #
 # Description

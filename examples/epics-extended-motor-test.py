@@ -10,7 +10,7 @@ DEBUGGING = True
 
 parser = argparse.ArgumentParser(description='Set positions of DynAp motors on the trajectory.')
 
-parser.add_argument('--default_eprefix', type=str, default='MetroMCSDEV1', help='default epics prefix')
+parser.add_argument('--default_eprefix', type=str, default='WORKSHOP01', help='default epics prefix')
 
 parser.add_argument('--debug', action='store_true', help='Debug mode', default=DEBUGGING)
 
@@ -28,9 +28,11 @@ _VERBOSE_ = 2
 #global args
 args = parser.parse_args()
 #--------------------------------
+# import sys
+# sys.path.append(".")
+# print(sys.path)
 
 # epic-extended motor test code
-
 from wrasc.epics_device_ra import EpicsExtendedMotor
 from wrasc import reactive_agent as ra
 
