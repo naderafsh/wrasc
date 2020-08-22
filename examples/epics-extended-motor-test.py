@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 #-------------------------------
 import argparse
 
@@ -38,6 +36,7 @@ from wrasc import reactive_agent as ra
 
 list_of_motors = set()
 
+# The default prefix is only used as a size reference to split the PV names to eprefix and device prefix.
 default_eprefix = 'WORKS'
 
 # read text file listing of all epics devices here
@@ -105,7 +104,8 @@ hop01_mot4.activator_ag.poll_pr = lambda ag_self: hop01_mot3.deactivator_ag.poll
 #=====================================================================================
 # input('press a key or break...')
 # dm module called to compile and install agents
-agents_sorted_by_layer = ra.compile_n_install({}, globals().copy(), default_eprefix)
+agents_sorted_by_layer = ra.compile_n_install({}, globals().copy(), _eprefix)
 # input('press any key to start the process loop...')
 # dm module takes control of the process loop
 ra.process_loop(agents_sorted_by_layer, args.cycles, cycle_period=args.cycle_period, debug=args.debug)
+

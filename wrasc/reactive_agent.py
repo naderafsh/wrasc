@@ -135,7 +135,7 @@ def excelise_ag_name(_name):
 class InStates:
     Invalid = None, 'Invalid'
     Valid = True, 'Valid'
-    Prohibited = False, 'Prohibited'
+    Inhibited = False, 'Inhibited'
 
 
 class OutStates:
@@ -147,7 +147,7 @@ class OutStates:
 class StateLogics:
     Invalid = InStates.Invalid[0]
     Valid = InStates.Valid[0]
-    Prohibited = InStates.Prohibited[0]
+    Inhibited = InStates.Inhibited[0]
     Idle = OutStates.Idle[0]
     Armed = OutStates.Armed[0]
     Done = OutStates.Done[0]
@@ -156,7 +156,7 @@ class StateLogics:
 class StateNames:
     Invalid = InStates.Invalid[1]
     Valid = InStates.Valid[1]
-    Prohibited = InStates.Prohibited[1]
+    Inhibited = InStates.Inhibited[1]
     Idle = OutStates.Idle[1]
     Armed = OutStates.Armed[1]
     Done = OutStates.Done[1]
@@ -324,7 +324,7 @@ class MyObservable:
 
         self.DebounceCycles = 3
         self.VarDebounced = None
-        self.NotChangeCount = 0
+        self.NoChangeCount = 0
         self.IsStable = False
 
         self._hold_counter = 0
@@ -436,7 +436,7 @@ class Agent(object):
         self.poll = MyObservable(**kwargs)
         self.act = MyObservable(**kwargs)
 
-        self.prohibited = False
+        self.inhibited = False
         self.known = False
         self.in_state = None 
         self.out_state = None
@@ -495,6 +495,8 @@ class Agent(object):
         self.out_PV = None
 
         self.install_pvs(**kwargs)
+
+        self.agent_list = None
 
     def setup(self,
             initial_value=None,
@@ -583,9 +585,9 @@ class Agent(object):
 
         # TODO add separate "invalid" flag, detach it from inVar/outVar
 
-        if self.prohibited:
-            self.in_state = StateNames.Prohibited
-            self.out_state = StateNames.Prohibited
+        if self.inhibited:
+            self.in_state = StateNames.Inhibited
+            self.out_state = StateNames.Inhibited
             self.poll.ChangeCount = 0
             self.poll.NoChangeCount = 0
             self.act_on = None
@@ -619,7 +621,7 @@ class Agent(object):
         else:
             self.out_state = StateNames.Done
 
-        self.known = (not self.prohibited) and (self.poll.Var is not None)
+        self.known = (not self.inhibited) and (self.poll.Var is not None)
 
         return self.in_state, self.out_state
 
@@ -659,14 +661,13 @@ class Agent(object):
                     # 
                     try:
                         if self.poll_pr is not None:
-                            self.prohibited = not self.poll_pr(self) # override to diabled
+                            self.inhibited = not self.poll_pr(self) # override to diabled
                     except:
                         # TODO fix this
-                        print( myEsc.ERROR + 'Exception in poll_pr func', end=myEsc.END)
-                        exit(1)
-                    
-                    if self.prohibited:
-                        _v, return_message = None, 'prohibited'
+                        raise RuntimeError(f'Exception in poll_pr func of agent {self.name} ')
+
+                    if self.inhibited:
+                        _v, return_message = None, 'inhibited'
                     else:
                         _v, return_message = self.poll_in(self)
                             
@@ -752,6 +753,7 @@ class Agent(object):
 
         :param major_cycle:
         :return:
+        
         """
         _v = None
         return_message = ''
@@ -760,7 +762,8 @@ class Agent(object):
 
         if (self.act._hold_counter < 1) and (self.act._hold_timer < timer()):
             # calculate the current state
-            self.state
+            # DONE Major bug fixed:
+            self.state()
             
             if self.act_on is not None: 
                 try:
@@ -874,6 +877,9 @@ def inference(sorted_ag_list, ag_states, max_minor_cycle=1, debug=False):
         ag_states[StateNames.Invalid] = 0
         for agname in sorted_ag_list:
             agent = sorted_ag_list[agname]['agent'] # type Agent 
+            # install a copy of agents list on each agent ONCE
+            if not agent.agent_list:
+                 agent.agent_list = sorted_ag_list 
             # only the first minor cycle counts as a major cycle.
             status, return_message = agent._in_proc(major_cycle=(minor_cycle == 1))
 
@@ -1032,7 +1038,7 @@ def compile_dependencies(_agents_list, script_globals):
                 line_str = '{0}\t{1} {2} \t ({3})'
 
                 if push_method_name:
-                    dep_str = '-- ' + push_method_name + ' ->'
+                    dep_str = push_method_name + ' ->'
                     if not method_name.startswith('act_'):
                         #err_str = myEsc.WARNING + '"push method" in none act_ method'
                         err_str = myEsc.SILENT_WARNING
@@ -1047,7 +1053,7 @@ def compile_dependencies(_agents_list, script_globals):
                         _depreag_obj = _depreag[1]
                         _depreag_obj.preced_ags.add(_this_ag)
                 else:
-                    dep_str = '<- ' + 'reference' + ' --'
+                    dep_str = 'reference' + ' <-'
 
                     if not method_name.startswith('poll_in'[0:3]):
                         # err_str = myEsc.WARNING + 'reference in an action method:' + '\n'
@@ -1079,20 +1085,20 @@ def compile_dependencies(_agents_list, script_globals):
         # _this_ag_obj.depend_ags = cleanup_ag_list(_this_ag_obj.depend_ags)
         _ag_full_names = [_el[1].name for _el in _this_ag_obj.depend_ags]
         if len(_ag_full_names) > 0:
-            print('', end='\t-d->')
+            print('', end='\td<-')
             print(_ag_full_names)
 
         _this_ag_obj.preced_ags = _this_ag_obj.preced_ags - _this_ag_obj.infer_ags
         # _this_ag_obj.preced_ags = cleanup_ag_list(_this_ag_obj.preced_ags)
         _ag_full_names = [_el[1].name for _el in _this_ag_obj.preced_ags]
         if len(_ag_full_names) > 0:
-            print('', end='\t<-p-')
+            print('', end='\tp->')
             print(_ag_full_names)
 
         # _this_ag_obj.infer_ags = cleanup_ag_list(_this_ag_obj.infer_ags)
         _ag_full_names = [_el[1].name for _el in _this_ag_obj.infer_ags]
         if len(_ag_full_names) > 0:
-            print('', end='\t<-i-')
+            print('', end='\ti->')
             print(_ag_full_names)
 
         # excel DModel output: infer dependency is saved to file.
@@ -1134,9 +1140,7 @@ def compile_dependencies(_agents_list, script_globals):
                     print('', end='.')
 
     if layer_updated:
-        err_str = myEsc.ERROR + 'max iteration reached while layer stats is not complete'
-        print(err_str)
-        exit(1)
+        raise RuntimeError('Failed to compile dependency.\nMax iteration reached while layer stats is not complete.\nPossible circular dependency.')
     else:
         print('\n', myEsc.SUCCESS+'\n ========================\n',
               'Dependency map compiled',
@@ -1162,9 +1166,7 @@ def compile_n_install(initial_dict_of_agents, script_globals, eprefix=None):
                 _global_agent = [['global', (_global_name, _global)]]
                 device_agent_list.extend(_global_agent)
             else:
-                print(myEsc.ERROR, 'Agent is referenced with a non-qualified name: "{}"'.format(_global_name), end=myEsc.END + ' ')
-                exit(1)
-
+                raise RuntimeError(f'Agent is referenced with a non-qualified name: "{_global_name}"')
     main_globals_devices = list(filter(lambda a: hasattr(a, 'dmDeviceType'), main_globals_list))
 
     # now install agents under devices
@@ -1319,7 +1321,7 @@ def process_loop(agents_sorted_by_layer, n_loop=1000000, cycle_period=0.5, debug
 
         state_record = {StateNames.Invalid: 0, 
                         StateNames.Idle: 0, StateNames.Armed: 0, StateNames.Done: 0, 
-                        StateNames.Prohibited: 0
+                        StateNames.Inhibited: 0
                         }
 
         while timer() < next_infer_time:
