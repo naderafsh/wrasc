@@ -1,4 +1,3 @@
-
 from wrasc import reactive_agent as ra
 from ppmac import GpasciiClient
 from timeit import default_timer as timer
@@ -15,9 +14,10 @@ These have no retry or timeout mechanism internally. Some specialised agents can
 
 """
 
-macrostrs = ["{","}"]
+macrostrs = ["{", "}"]
 
-def assert_pos_wf(xx:int, pos, tol):
+
+def assert_pos_wf(xx: int, pos, tol):
     """
 
     retuns 
@@ -25,7 +25,7 @@ def assert_pos_wf(xx:int, pos, tol):
     2 - default jog statement to move the motor there if not already there
 
     """
-    if isinstance(pos,str) or isinstance(tol,str):
+    if isinstance(pos, str) or isinstance(tol, str):
         tol = str(tol)
         pos = str(pos)
         pos_hi = f"{pos} + {tol}"
@@ -35,7 +35,15 @@ def assert_pos_wf(xx:int, pos, tol):
         pos_hi = pos + tol
         pos_lo = pos - tol
         target_pos = pos
-    return [f"#{xx}p < {pos_hi}",f"#{xx}p > {pos_lo}",f"Motor[{xx}].DesVelZero == 1",f"Motor[{xx}].InPos == 1"], [f"#{xx}j={target_pos}"]
+    return (
+        [
+            f"#{xx}p < {pos_hi}",
+            f"#{xx}p > {pos_lo}",
+            f"Motor[{xx}].DesVelZero == 1",
+            f"Motor[{xx}].InPos == 1",
+        ],
+        [f"#{xx}j={target_pos}"],
+    )
 
 
 def isPmacNumber(s: str):
@@ -58,37 +66,40 @@ def isPmacNumber(s: str):
             .isdigit()
         )
 
-def parse_vars(any_side : str):
 
-    # parse right or left soides of equation 
+def parse_vars(any_side: str):
+
+    # parse right or left soides of equation
     # to parametrised temlate and list of vars
 
     all_vars = []
     # any_side: no change if it is a ppmacnumber, or an address
-    if not (isPmacNumber(any_side) or any_side.endswith('.a')):
-        # there is at least a variable on the right, 
+    if not (isPmacNumber(any_side) or any_side.endswith(".a")):
+        # there is at least a variable on the right,
         # which needs to be evaluated.
-        for v in re.split(r'[\+\-\*\/=><! ]', any_side):
+        for v in re.split(r"[\+\-\*\/=><! ]", any_side):
             if v and not isPmacNumber(v):
                 all_vars.append(v)
                 vars_index = len(all_vars) - 1
-                any_side = any_side.replace(v,f"_var_{vars_index}")
+                any_side = any_side.replace(v, f"_var_{vars_index}")
 
     return any_side, all_vars
+
 
 def validate_cmd_str(cmds):
 
     if cmds is None:
         return None
 
-    if isinstance(cmds,str):
-       return cmds
-    elif isinstance(cmds,list):
+    if isinstance(cmds, str):
+        return cmds
+    elif isinstance(cmds, list):
         # convert list to one string of lines
         return "\n".join(cmds)
     else:
         raise RuntimeError(f"bad command: {cmds}")
- 
+
+
 def validate_watch_list(watch_list):
 
     # makes a list of variables on the watchlist which need to be fetched and relpaced with real-time values, real time.
@@ -98,7 +109,7 @@ def validate_watch_list(watch_list):
 
     # make sure "verifies" is a list
     if isinstance(watch_list, str):
-        watch_list =[watch_list]
+        watch_list = [watch_list]
 
     conditions = list()
     # there are conditions to check.
@@ -108,14 +119,15 @@ def validate_watch_list(watch_list):
         l_template, l_vars = parse_vars(statement)
         conditions.append([l_template, l_vars, statement])
 
-
     return conditions
+
 
 def ppwr_poll_pr(ag_self: ra.Agent):
     """ 
     these are "steged agents" meaning theyt are being inhibited by stage progress
     
     """
+
 
 def ppwr_poll_in(ag_self: ra.Agent):
 
@@ -126,9 +138,8 @@ def ppwr_poll_in(ag_self: ra.Agent):
 
     # acquire left sides
 
-
     for condition in ag_self.verifies:
-        # take templates and variables from inside the 
+        # take templates and variables from inside the
         # condisions and verify the statement
 
         l_template, l_vars, statement = condition
@@ -142,23 +153,15 @@ def ppwr_poll_in(ag_self: ra.Agent):
                 return ra.StateLogics.Invalid, "comms error"
 
             l_value_loaded = tpl[0][1].strip("\n").strip(" ").split("=")[-1]
-        
-            l_template = l_template.replace(f"_var_{i}",l_value_loaded)
-            
-        # value_loaded = tpl[0][1].strip("\n").strip(" ")
-        # value_loaded = value_loaded.split("=")[-1]
 
-        # if not isPmacNumber(value_ref):
-        #     value_ref = f"'{value_ref}'"
-        #     value_loaded = f"'{value_loaded}'"
-
-        # verify_text = f"{value_loaded} {logic_op} {value_ref}"
+            l_template = l_template.replace(f"_var_{i}", l_value_loaded)
 
         verify_text = l_template
-        if eval(verify_text)==False:
-            return False , f"False: {statement} "
-    
+        if eval(verify_text) == False:
+            return False, f"False: {statement} "
+
     return True, "True"
+
 
 def ppwr_act_on_valid(ag_self: ra.Agent):
     """
@@ -168,13 +171,15 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
     """
 
     # Arm for action if poll is changed to False or True
-    if (ag_self.poll.Var == True) :
+    if ag_self.poll.Var == True:
 
         # stop checking the condition. Stage is now passed.
         ag_self.poll.hold(for_cycles=-1, reset_var=False)
 
         if ag_self.celeb_cmds:
-            resp = ag_self.ppmac.send_receive_raw(ag_self.expand_cmd_str(ag_self.celeb_cmds)) 
+            resp = ag_self.ppmac.send_receive_raw(
+                ag_self.expand_cmd_str(ag_self.celeb_cmds)
+            )
 
         return ra.StateLogics.Done, "Done and retained."
 
@@ -187,13 +192,15 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
 
         if ag_self.poll.NoChangeCount > 1:
             return ra.StateLogics.Idle, "Retries exhausted"
-        
+
         if ag_self.cry_cmds:
-            resp = ag_self.ppmac.send_receive_raw(ag_self.expand_cmd_str(ag_self.cry_cmds))
+            resp = ag_self.ppmac.send_receive_raw(
+                ag_self.expand_cmd_str(ag_self.cry_cmds)
+            )
             return ra.StateLogics.Idle, "Fix action"
-            
+
         return ra.StateLogics.Idle, "No action !!!"
-  
+
 
 def ppwr_act_on_invalid(ag_self: ra.Agent):
     if ag_self.fetch_cmds:
@@ -201,21 +208,26 @@ def ppwr_act_on_invalid(ag_self: ra.Agent):
     return ra.StateLogics.Idle, "reacted to invalid"
 
 
-
 class ppmac_wrasc(ra.Agent):
-    
-    ppmac = ... # type : GpasciiClient
-    
-    def __init__(self, ppmac:GpasciiClient=None, verifiy_stats=None, 
-    fetch_cmds=None, celeb_cmds=None, cry_cmds=None,
-    poll_in=ppwr_poll_in, act_on_invalid=ppwr_act_on_invalid, act_on_valid=ppwr_act_on_valid,
-    **kwargs):
-        
+
+    ppmac = ...  # type : GpasciiClient
+
+    def __init__(
+        self,
+        ppmac: GpasciiClient = None,
+        verifiy_stats=None,
+        fetch_cmds=None,
+        celeb_cmds=None,
+        cry_cmds=None,
+        poll_in=ppwr_poll_in,
+        act_on_invalid=ppwr_act_on_invalid,
+        act_on_valid=ppwr_act_on_valid,
+        **kwargs,
+    ):
+
         if not ppmac or (not isinstance(ppmac, GpasciiClient)):
-            self.dmAgentType = 'uninitialised'
+            self.dmAgentType = "uninitialised"
             return
-            
-        self.ppmac = ppmac
 
         self.verifies = validate_watch_list(verifiy_stats)
 
@@ -224,24 +236,33 @@ class ppmac_wrasc(ra.Agent):
         self.cry_cmds = validate_cmd_str(cry_cmds)
         self.fetch_cmds = validate_cmd_str(fetch_cmds)
 
+        self.ppmac = ppmac
+
         if not self.ppmac.connected:
             self.ppmac.connect()
             time_0 = timer()
-            time_out = 2 # sec
-    
+            time_out = 2  # sec
+
             while not self.ppmac.connected:
-    
+
                 if timer() < time_0 + time_out:
-                    raise TimeoutError(f"GpasciiClient connection timeout: {self.ppmac.host}")
+                    raise TimeoutError(
+                        f"GpasciiClient connection timeout: {self.ppmac.host}"
+                    )
                 sleep(0.1)
 
         # if you are here, then we have an agent to intialise
 
-        super().__init__(poll_in=poll_in,act_on_invalid=act_on_invalid, act_on_valid=act_on_valid,
-         **kwargs)
-        self.dmAgentType = 'ppmac_wrasc'
+        super().__init__(
+            poll_in=poll_in,
+            act_on_invalid=act_on_invalid,
+            act_on_valid=act_on_valid,
+            **kwargs,
+        )
+        self.dmAgentType = "ppmac_wrasc"
 
         # compile statement lists
+
     def setup(self, **kwargs):
         super().setup(**kwargs)
 
@@ -249,12 +270,12 @@ class ppmac_wrasc(ra.Agent):
 
         # expand {} macros with actual values from ppmac
 
-        macro_list = re.findall(f"(?:{macrostrs[0]})(.*?)(?:{macrostrs[1]})",cmds_str)
+        macro_list = re.findall(f"(?:{macrostrs[0]})(.*?)(?:{macrostrs[1]})", cmds_str)
 
         for condition in validate_watch_list(macro_list):
 
             l_template, l_vars, statement = condition
-            
+
             for i, l_var in enumerate(l_vars):
                 # acquire the variable to check
                 tpl = self.ppmac.send_receive_raw(l_var)
@@ -263,14 +284,94 @@ class ppmac_wrasc(ra.Agent):
                     raise RuntimeError(f"comms with ppmac at {self.ppmac.host}")
 
                 l_value_loaded = tpl[0][1].strip("\n").strip(" ").split("=")[-1]
-            
-                l_template = l_template.replace(f"_var_{i}",l_value_loaded)
-            
+
+                l_template = l_template.replace(f"_var_{i}", l_value_loaded)
+
             rt_val = eval(l_template)
             replace = macrostrs[0] + statement + macrostrs[1]
             cmds_str = cmds_str.replace(f"{replace}", f"{rt_val}")
-        
+
         return cmds_str
+
+
+# -------------------------------------------------------------------
+def done_condition_poi(ag_self: ra.Agent):
+
+    # check "done" condition.
+    # set the sequence by setting the prohibits
+    # this agent remains invalid until the process is all done
+    # and then uses
+
+    all_stages_passed = ag_self.last_layer_dependency_ag.poll.Var
+
+    if not all_stages_passed:
+        return None, "last stage not passed..."
+
+    for agname in ag_self.agent_list:
+        ag = ag_self.agent_list[agname]["agent"]
+        assert isinstance(ag, ra.Agent)
+
+        # only reset ags which are below this control agent
+        if ag.layer >= ag_self.layer:
+            continue
+
+        all_stages_passed = all_stages_passed and ag.poll.Var
+
+    if not all_stages_passed:
+        return None, "prev stages not passed..."
+
+    # all done. Now decide based on a counrter to either quit or reset and repeat
+    if ag_self.repeat:
+        return False, "Resetting the loop to repeat"
+    else:
+        return True, "Quitting..."
+
+
+def arm_to_quit_aov(ag_self: ra.Agent):
+    if ag_self.poll.Var == True:
+        # inform and log, confirm with other agents...
+        return ra.StateLogics.Armed, "quitting..."
+    elif ag_self.poll.Var == False:
+        # action: invalidate all agents in this subs-stage,
+        # so the cycle restart
+        for agname in ag_self.agent_list:
+            ag = ag_self.agent_list[agname]["agent"]
+            assert isinstance(ag, ra.Agent)
+
+            # only reset ags which are below this control agent
+            if ag.layer >= ag_self.layer:
+                continue
+
+            ag.poll.force(None, immediate=False)
+
+        return ra.StateLogics.Idle, "all ags reset..."
+
+
+def quit_act_aoa(ag_self: ra.Agent):
+
+    if ag_self.poll.Var:
+        return ra.StateLogics.Done, "RA_QUIT"
+    else:
+        return ra.StateLogics.Idle, "RA_WHATEVER"
+
+
+class sequencer_wrasc(ra.Agent):
+    def __init__(
+        self,
+        poll_in=done_condition_poi,
+        act_on_valid=arm_to_quit_aov,
+        act_on_armed=quit_act_aoa,
+        **kwargs,
+    ):
+
+        super().__init__(
+            poll_in=poll_in,
+            act_on_valid=act_on_valid,
+            act_on_armed=act_on_armed,
+            **kwargs,
+        )
+
+        self.dmAgentType = "sequencer_wrasc"
 
 
 if __name__ == "__main__":
