@@ -3,6 +3,8 @@ from ppmac import GpasciiClient
 from timeit import default_timer as timer
 from time import sleep
 import re
+from io import StringIO
+import csv
 
 """ ppmac basic agent. 
 This agent checks (watches) a list of statement conditions, 
@@ -39,8 +41,9 @@ def assert_pos_wf(xx: int, pos, tol):
         [
             f"#{xx}p < {pos_hi}",
             f"#{xx}p > {pos_lo}",
-            f"Motor[{xx}].DesVelZero == 1",
-            f"Motor[{xx}].InPos == 1",
+            f"Motor[{xx}].DesVelZero==1",
+            f"Motor[{xx}].InPos==1",
+            f"Motor[{xx}].MinusLimit + Motor[{xx}].PlusLimit == 0",
         ],
         [f"#{xx}j={target_pos}"],
     )
@@ -86,7 +89,7 @@ def parse_vars(any_side: str):
     return any_side, all_vars
 
 
-def validate_cmd_str(cmds):
+def validate_cmds(cmds):
 
     if cmds is None:
         return None
@@ -100,26 +103,26 @@ def validate_cmd_str(cmds):
         raise RuntimeError(f"bad command: {cmds}")
 
 
-def validate_watch_list(watch_list):
+def pars_conds(conds_list):
 
     # makes a list of variables on the watchlist which need to be fetched and relpaced with real-time values, real time.
 
-    if watch_list is None:
-        return None
+    if conds_list is None:
+        return []
 
     # make sure "verifies" is a list
-    if isinstance(watch_list, str):
-        watch_list = [watch_list]
+    if isinstance(conds_list, str):
+        conds_list = [conds_list]
 
-    conditions = list()
+    parsed_conds = list()
     # there are conditions to check.
-    for statement in watch_list:
-        assert isinstance(statement, str)
+    for cond in conds_list:
+        assert isinstance(cond, str)
 
-        l_template, l_vars = parse_vars(statement)
-        conditions.append([l_template, l_vars, statement])
+        l_template, l_vars = parse_vars(cond)
+        parsed_conds.append([l_template, l_vars, cond])
 
-    return conditions
+    return parsed_conds
 
 
 def ppwr_poll_pr(ag_self: ra.Agent):
@@ -142,23 +145,30 @@ def ppwr_poll_in(ag_self: ra.Agent):
         # take templates and variables from inside the
         # condisions and verify the statement
 
-        l_template, l_vars, statement = condition
+        verify_text, statement = ag_self.check_cond(condition)
 
-        for i, l_var in enumerate(l_vars):
-            # acquire the variable to check
-            tpl = ag_self.ppmac.send_receive_raw(l_var)
+        if verify_text is None:
+            return ra.StateLogics.Invalid, "comms error"
 
-            if not tpl[1]:
-                ag_self.poll.Var = None
-                return ra.StateLogics.Invalid, "comms error"
-
-            l_value_loaded = tpl[0][1].strip("\n").strip(" ").split("=")[-1]
-
-            l_template = l_template.replace(f"_var_{i}", l_value_loaded)
-
-        verify_text = l_template
         if eval(verify_text) == False:
             return False, f"False: {statement} "
+
+    # now that it is going to be True, calculate the logs:
+
+    vals = [ag_self.poll.Time]
+    for condition in ag_self.log_stats:
+        # take templates and variables from inside the
+        # condisions and verify the statement
+
+        verify_text, statement = ag_self.check_cond(condition)
+
+        if verify_text:
+            # store eval(verify_text) in the logs dict:
+            vals.append(eval(verify_text))
+    if len(vals) > 1:
+        # ag_self.log_vals.append(vals)
+        # ag_self.writer.writerow(vals)
+        ag_self.csvcontent += ",".join(map(str, vals)) + "\n"
 
     return True, "True"
 
@@ -173,15 +183,27 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
     # Arm for action if poll is changed to False or True
     if ag_self.poll.Var == True:
 
-        # stop checking the condition. Stage is now passed.
-        ag_self.poll.hold(for_cycles=-1, reset_var=False)
+        # if already celebrated
+        if ag_self.poll.is_on_hold():
+            return ra.StateLogics.Done, f"Done."
+        else:
+            if ag_self.celeb_cmds:
+                resp = ag_self.ppmac.send_receive_raw(
+                    ag_self.expand_cmd_str(ag_self.celeb_cmds)
+                )
+            else:
+                resp = ""
 
-        if ag_self.celeb_cmds:
-            resp = ag_self.ppmac.send_receive_raw(
-                ag_self.expand_cmd_str(ag_self.celeb_cmds)
-            )
+            # stop checking the condition. Stage is now passed.
+            ag_self.poll.hold(for_cycles=-1, reset_var=False)
 
-        return ra.StateLogics.Done, "Done and retained."
+            # now log a line to cvs if there is one
+            if ag_self.csvcontent and ag_self.csv_file_name:
+                with open(ag_self.csv_file_name, "w+") as file:
+                    file.write(ag_self.csvcontent)
+                ag_self.cvscontent = None
+
+            return ra.StateLogics.Done, f"Hooray: {resp}"
 
     elif ag_self.poll.Var == False:
 
@@ -208,20 +230,30 @@ def ppwr_act_on_invalid(ag_self: ra.Agent):
     return ra.StateLogics.Idle, "reacted to invalid"
 
 
-class ppmac_wrasc(ra.Agent):
+class Conditions(object):
+    def __init__(self, value=None):
+        self.value = pars_conds(value)
+
+    def __get__(self, instance, owner):
+        return self.value
+
+    def __set__(self, instance, value):
+        self.value = pars_conds(value)
+
+
+class WrascPpmac(ra.Agent):
 
     ppmac = ...  # type : GpasciiClient
 
     def __init__(
         self,
         ppmac: GpasciiClient = None,
-        verifiy_stats=None,
         fetch_cmds=None,
-        celeb_cmds=None,
+        verifiy_stats=None,
         cry_cmds=None,
-        poll_in=ppwr_poll_in,
-        act_on_invalid=ppwr_act_on_invalid,
-        act_on_valid=ppwr_act_on_valid,
+        celeb_cmds=None,
+        pass_logs=None,
+        csv_file_name=None,
         **kwargs,
     ):
 
@@ -229,12 +261,24 @@ class ppmac_wrasc(ra.Agent):
             self.dmAgentType = "uninitialised"
             return
 
-        self.verifies = validate_watch_list(verifiy_stats)
+        self.verifies = pars_conds(verifiy_stats)
+        # log_stats need to be fetched with verifies, stored, and logged at celeb.
+        self.log_stats = pars_conds(pass_logs)
+        self.csv_file_name = csv_file_name
 
-        self.fetch_cmds = validate_cmd_str(fetch_cmds)
-        self.celeb_cmds = validate_cmd_str(celeb_cmds)
-        self.cry_cmds = validate_cmd_str(cry_cmds)
-        self.fetch_cmds = validate_cmd_str(fetch_cmds)
+        # setup the headers, they get written when (and only if) the first set of readings are ready
+        if self.log_stats:
+            headers = ["Time"] + list(list(zip(*self.log_stats))[2])
+            # self.log_vals = headers
+            # self.writer.writerow(headers)
+            self.csvcontent = ",".join(map(str, headers)) + "\n"
+        else:
+            # self.log_vals = []
+            self.csvcontent = None
+
+        self.celeb_cmds = validate_cmds(celeb_cmds)
+        self.cry_cmds = validate_cmds(cry_cmds)
+        self.fetch_cmds = validate_cmds(fetch_cmds)
 
         self.ppmac = ppmac
 
@@ -254,13 +298,12 @@ class ppmac_wrasc(ra.Agent):
         # if you are here, then we have an agent to intialise
 
         super().__init__(
-            poll_in=poll_in,
-            act_on_invalid=act_on_invalid,
-            act_on_valid=act_on_valid,
+            poll_in=ppwr_poll_in,
+            act_on_invalid=ppwr_act_on_invalid,
+            act_on_valid=ppwr_act_on_valid,
             **kwargs,
         )
         self.dmAgentType = "ppmac_wrasc"
-
         # compile statement lists
 
     def setup(self, **kwargs):
@@ -272,26 +315,38 @@ class ppmac_wrasc(ra.Agent):
 
         macro_list = re.findall(f"(?:{macrostrs[0]})(.*?)(?:{macrostrs[1]})", cmds_str)
 
-        for condition in validate_watch_list(macro_list):
+        for condition in pars_conds(macro_list):
 
-            l_template, l_vars, statement = condition
+            l_template, statement = self.check_cond(condition)
 
-            for i, l_var in enumerate(l_vars):
-                # acquire the variable to check
-                tpl = self.ppmac.send_receive_raw(l_var)
-
-                if not tpl[1]:
-                    raise RuntimeError(f"comms with ppmac at {self.ppmac.host}")
-
-                l_value_loaded = tpl[0][1].strip("\n").strip(" ").split("=")[-1]
-
-                l_template = l_template.replace(f"_var_{i}", l_value_loaded)
+            if l_template is None:
+                raise RuntimeError(f"comms with ppmac at {self.ppmac.host}")
 
             rt_val = eval(l_template)
             replace = macrostrs[0] + statement + macrostrs[1]
             cmds_str = cmds_str.replace(f"{replace}", f"{rt_val}")
 
         return cmds_str
+
+    def check_cond(self, condition):
+
+        l_template, l_vars, statement = condition
+
+        for i, l_var in enumerate(l_vars):
+            # acquire the variable to check
+            tpl = self.ppmac.send_receive_raw(l_var)
+
+            if not tpl[1]:
+                self.poll.Var = None
+                l_template = None
+                break
+                # return ra.StateLogics.Invalid, "comms error"
+
+            l_template = l_template.replace(
+                f"_var_{i}", tpl[0][1].strip("\n").strip(" ").split("=")[-1]
+            )
+
+        return l_template, statement
 
 
 # -------------------------------------------------------------------
@@ -321,8 +376,9 @@ def done_condition_poi(ag_self: ra.Agent):
         return None, "prev stages not passed..."
 
     # all done. Now decide based on a counrter to either quit or reset and repeat
-    if ag_self.repeat:
-        return False, "Resetting the loop to repeat"
+    if ag_self.repeats > 0:
+        ag_self.repeats -= 1
+        return False, f"Resetting the loop, {ag_self.repeats} to go"
     else:
         return True, "Quitting..."
 
@@ -355,7 +411,7 @@ def quit_act_aoa(ag_self: ra.Agent):
         return ra.StateLogics.Idle, "RA_WHATEVER"
 
 
-class sequencer_wrasc(ra.Agent):
+class WrascSequencer(ra.Agent):
     def __init__(
         self,
         poll_in=done_condition_poi,
@@ -372,6 +428,17 @@ class sequencer_wrasc(ra.Agent):
         )
 
         self.dmAgentType = "sequencer_wrasc"
+
+
+class PpmacMotorShell(object):
+    """This class simply provides a way to access ppmac Motor structure using python objects.
+
+    At run-time, the engine investigates its own members and poupulate them with corresponding values from ppmac.
+    Care shall be taken not to make any variables with worng names until a pre-validation is added.
+
+    Args:
+        object ([type]): [description]
+    """
 
 
 if __name__ == "__main__":

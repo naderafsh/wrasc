@@ -60,7 +60,8 @@ If you get compile error at pass 3, "max iteration" it is most likely due to a c
 
 """
 
-output_dir = os.path.expanduser("~") + "/wrasc_output"
+# output_dir = os.path.expanduser("~") + "/wrasc_output"
+output_dir = "ra_out"
 
 dmodel_log_filename = os.path.join(output_dir, "dmodel_compiler" + ".log")
 info_log_filename = os.path.join(output_dir, "reactive_agents_process" + ".log")
@@ -70,13 +71,13 @@ Path(output_dir).mkdir(parents=True, exist_ok=True)
 # Create two logger files
 formatter = logging.Formatter("%(asctime)s %(message)s", datefmt="%H:%M:%S")
 # first file logger
-logger_dmodel = logging.getLogger("dmodel_compiler")
+logger_dmodel = logging.getLogger(__name__ + "_compiler")
 hdlr_1 = logging.FileHandler(dmodel_log_filename, mode="w+")
 hdlr_1.setFormatter(formatter)
 logger_dmodel.setLevel(logging.DEBUG)
 logger_dmodel.addHandler(hdlr_1)
 logger_dmodel.info(
-    "SCS reactive agents module is compiling at {}".format(datetime.now())
+    "SCS reactive agents module is compiling..."  # at {}".format(datetime.now())
 )
 
 formatter = logging.Formatter(
@@ -90,9 +91,7 @@ hdlr_2.setFormatter(formatter)
 logger_default.setLevel(logging.INFO)
 logger_default.addHandler(hdlr_2)
 logger_default.addHandler(logging.StreamHandler(sys.stdout))
-logger_default.info(
-    "SCS reactive agents module is loading at {}".format(datetime.now())
-)
+logger_default.info("SCS reactive agents module is loading...")
 
 # third logger
 logger_debug = logging.getLogger("debug")
@@ -115,7 +114,7 @@ html_out_path = excel_out_path
 
 
 # Declare your table
-class vars_table(ft.Table):
+class VarsTable(ft.Table):
     name = ft.Col("Agent")
     description = ft.Col("Value")
 
@@ -364,6 +363,13 @@ class MyObservable:
         self.verbose = 0
 
         self.last_message = ""
+
+    def is_on_hold(self):
+        return (
+            self._hold_indefinitely
+            or (self._hold_counter > 0)
+            or (self._hold_timer >= timer())
+        )
 
     def hold(self, for_cycles=1, for_seconds=-1, reset_var=True):
         """ sets Var to invalid and keeps it invalid for requested _hold_counter (cycles)
@@ -761,7 +767,8 @@ class Agent(object):
                         self.poll.ChangeTime = timer()
                         try:
                             # this may throw an exception depending on dmAgentType... put this last!
-                            self.poll.Diff = _v - self.poll.Var
+                            if isinstance(self.poll.Var, type(_v)):
+                                self.poll.Diff = _v - self.poll.Var
                         except TypeError:
                             pass
                     else:
@@ -850,15 +857,68 @@ class Agent(object):
                 self.act.LastTime = self.act.Time
                 self.act.ChangeTime = timer()
                 try:
-                    self.act.Diff = (
-                        _v - self.act.Var
-                    )  # this may through an exception depending on dmAgentType... put this last!
+                    # this may through an exception depending on dmAgentType... put this last!
+                    if isinstance(self.act.Var, type(_v)):
+                        self.act.Diff = _v - self.act.Var
                 except TypeError:
                     pass
 
         self.act.Var = _v
         self.act.last_message = return_message
         return self.state(), return_message
+
+
+def annotate(agent: Agent):
+
+    status = agent.state()
+    agname = agent.name
+    poll_message = agent.poll.last_message
+    print_str = desc_str = in_var_str = ""
+
+    abbreviated_status = status[0][0] + status[1][0]
+    in_var_str = "nil"
+    if agent.verbose > 0:
+        if isinstance(agent.poll.Var, dict):
+            in_var_str = "<"
+            for key in agent.poll.Var:
+                if agent.poll.Var[key] is None:
+                    in_var_str += " {}:None ".format(key)
+                elif isinstance(agent.poll.Var[key], str):
+                    in_var_str += " {}:{} ".format(key, agent.poll.Var[key])
+                else:
+                    in_var_str += " {}:{:.3E} ".format(key, float(agent.poll.Var[key]))
+            in_var_str += ">"
+
+        else:
+            in_var_str = "{}".format(agent.poll.Var)
+
+        _str = "<" + agent_var_debug_format.format(
+            agname,
+            abbreviated_status,
+            poll_message,
+            in_var_str,
+            "" if agent.unit is None else agent.unit,
+        )
+
+        desc_str = '{0}({2} {3}) "{1}" "{4}"'.format(
+            abbreviated_status,
+            poll_message,
+            in_var_str,
+            "" if agent.unit is None else agent.unit,
+            agent.act.last_message,
+        )
+
+        if agent.poll.Changed and agent.verbose > 1:
+            desc_str = "**" + desc_str
+            print_str = "{} {}".format(agname, desc_str)
+        elif agent.verbose > 2:
+            desc_str = "* " + desc_str
+            print_str = "{} {}".format(agname, desc_str)
+        else:
+            print_str = ""
+            desc_str = "  " + desc_str
+
+    return print_str, desc_str, in_var_str
 
 
 class SeverityAg(Agent):
@@ -940,52 +1000,9 @@ def inference(sorted_ag_list, ag_states, max_minor_cycle=1, debug=False):
                 # this is a RA command:
                 ra_commands.add(return_message)
 
-            abbreviated_status = status[0][0] + status[1][0]
-            in_var_str = "nil"
+            print_str, desc_str, in_var_str = annotate(agent)
+
             if agent.verbose > 0:
-                if isinstance(agent.poll.Var, dict):
-                    in_var_str = "<"
-                    for key in agent.poll.Var:
-                        if agent.poll.Var[key] is None:
-                            in_var_str += " {}:None ".format(key)
-                        elif isinstance(agent.poll.Var[key], str):
-                            in_var_str += " {}:{} ".format(key, agent.poll.Var[key])
-                        else:
-                            in_var_str += " {}:{:.3E} ".format(
-                                key, float(agent.poll.Var[key])
-                            )
-                    in_var_str += ">"
-
-                else:
-                    in_var_str = "{}".format(agent.poll.Var)
-
-                _str = "<" + agent_var_debug_format.format(
-                    agname,
-                    abbreviated_status,
-                    return_message,
-                    in_var_str,
-                    "" if agent.unit is None else agent.unit,
-                )
-
-                desc_str = '{0}({2} {3}) "{1}" "{4}"'.format(
-                    abbreviated_status,
-                    return_message,
-                    in_var_str,
-                    "" if agent.unit is None else agent.unit,
-                    agent.act.last_message,
-                )
-
-                print_str = ""
-                if agent.poll.Changed and agent.verbose > 1:
-                    desc_str = "**" + desc_str
-                    print_str = "{} {}".format(agname, desc_str)
-                elif agent.verbose > 2:
-                    desc_str = "* " + desc_str
-                    print_str = "{} {}".format(agname, desc_str)
-                else:
-                    print_str = ""
-                    desc_str = "  " + desc_str
-
                 if len(print_str) and debug:
                     logger.debug(print_str)
                     # print(print_str)
@@ -1011,7 +1028,7 @@ def action(sorted_ag_list, ag_states, debug=False):
     ra_commands = set([])
 
     for agname in sorted_ag_list:
-        agent = sorted_ag_list[agname]["agent"]
+        agent = sorted_ag_list[agname]["agent"]  # type: Agent
         status, return_message = agent._out_proc(major_cycle=(minor_cycle == 1))
 
         if str(return_message).startswith("RA_"):
@@ -1465,13 +1482,13 @@ def process_loop(agents_sorted_by_layer, n_loop=1000000, cycle_period=0.5, debug
         run_time = timer() - time_0
 
         # INFERENCE: loop through the agents, poll.force vals and update GState but NOT the actions
-        _print_in, ra_commands, polls_var_list = inference(
+        poll_print, ra_commands, polls_var_list = inference(
             agents_sorted_by_layer, state_record, debug=debug
         )
         all_ra_commands.update(ra_commands)
         process_ra_command(all_ra_commands)
 
-        table = vars_table(polls_var_list)
+        table = VarsTable(polls_var_list)
         # this print is equivalent of what logger_debug would do wit additional stdout handler added
         # print_list = [item['name']+' '+item['description'] for item in polls_var_list if item['description'].startswith('*')]
         # print(*print_list, sep='\n')
@@ -1482,13 +1499,13 @@ def process_loop(agents_sorted_by_layer, n_loop=1000000, cycle_period=0.5, debug
         while timer() < next_act_time:
             time.sleep(0.02)
         # ACTIONS: loop through the agents,
-        _print_out, ra_commands = action(
+        act_print, ra_commands = action(
             agents_sorted_by_layer, state_record, debug=debug
         )
         all_ra_commands.update(ra_commands)
         process_ra_command(all_ra_commands)
 
-        if _print_in or _print_out:
+        if poll_print or act_print:
             if debug:
                 print("states = {}".format(state_record))
             print(
