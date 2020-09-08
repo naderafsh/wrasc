@@ -379,6 +379,7 @@ class MyObservable:
         #  maybe NOT
         if reset_var:
             self.Var = None
+            self.Changed = False
 
         # -1 means indefinitely
         if (for_cycles < 0) and (for_seconds < 0):
@@ -772,6 +773,7 @@ class Agent(object):
                         except TypeError:
                             pass
                     else:
+                        # when not on hold, a false Change counts.
                         self.poll.NoChangeCount += 1
                         # two consecutive valid variables are equal: valid and unchanged
                         if self.poll.NoChangeCount >= self.poll.DebounceCycles:
@@ -791,8 +793,11 @@ class Agent(object):
         else:
             # TODO review: do we need persistent invalidation? probably NO
             # changed it to reflect
+            # if it is holding, then it is not "just" changed.
+            # all the otrher counts may still stay frozen, but at least Changed shall be false
+            #
 
-            # self.poll.Var = None
+            self.poll.Changed = False
 
             return_message = "on poll.hold..."
             # if this is a major cycle, then recalc remaining invalidation time

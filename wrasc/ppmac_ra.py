@@ -41,7 +41,6 @@ def assert_pos_wf(xx: int, pos, tol):
         [
             f"#{xx}p < {pos_hi}",
             f"#{xx}p > {pos_lo}",
-            f"Motor[{xx}].DesVelZero==1",
             f"Motor[{xx}].InPos==1",
             f"Motor[{xx}].MinusLimit + Motor[{xx}].PlusLimit == 0",
         ],
@@ -74,6 +73,11 @@ def parse_vars(any_side: str):
 
     # parse right or left soides of equation
     # to parametrised temlate and list of vars
+
+    # pass_conds = [
+    #     f"isclose( {cond.split('=')[0]}, {cond.split('=')[1]}, abs_tol=1e05)"
+    #     for cond in cry_cmds
+    # ]
 
     all_vars = []
     # any_side: no change if it is a ppmacnumber, or an address
@@ -153,21 +157,18 @@ def ppwr_poll_in(ag_self: ra.Agent):
         if eval(verify_text) == False:
             return False, f"False: {statement} "
 
-    # now that it is going to be True, calculate the logs:
+    # now that it is going to be True, calculate the logs.
+    # they will be saved to file via actions:
 
     vals = [ag_self.poll.Time]
     for condition in ag_self.log_stats:
-        # take templates and variables from inside the
-        # condisions and verify the statement
-
+        # acquire log statements
         verify_text, statement = ag_self.check_cond(condition)
 
         if verify_text:
             # store eval(verify_text) in the logs dict:
             vals.append(eval(verify_text))
     if len(vals) > 1:
-        # ag_self.log_vals.append(vals)
-        # ag_self.writer.writerow(vals)
         ag_self.csvcontent += ",".join(map(str, vals)) + "\n"
 
     return True, "True"
@@ -178,6 +179,8 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
     The best act here is to Arm when an action is known.
     Because there are two different actions are known here, it is best to reset the
     act status to idle whenever the poll status is changed.
+
+    This will ARM if an act_on_armed method is defined. This is for users to hook their custom methods
     """
 
     # Arm for action if poll is changed to False or True
@@ -199,9 +202,19 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
 
             # now log a line to cvs if there is one
             if ag_self.csvcontent and ag_self.csv_file_name:
+
+                # TODO if file exists, make a backup of the existing file
+
                 with open(ag_self.csv_file_name, "w+") as file:
                     file.write(ag_self.csvcontent)
                 ag_self.cvscontent = None
+
+            # arm if an arm action is defined (by user). Otherwise Done
+            if ag_self.act_on_armed:
+                return (
+                    ra.StateLogics.Armed,
+                    f"passing control to users act_on_arm: {resp}",
+                )
 
             return ra.StateLogics.Done, f"Hooray: {resp}"
 
@@ -212,8 +225,8 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
         # this is a way of managing reties:
         # once the agent gets armed, it will not be released until externally poked back?
 
-        if ag_self.poll.NoChangeCount > 1:
-            return ra.StateLogics.Idle, "Retries exhausted"
+        if ag_self.poll.NoChangeCount > ag_self.cry_retries:
+            return ra.StateLogics.Idle, f"{ag_self.cry_retries} retries exhausted"
 
         if ag_self.cry_cmds:
             resp = ag_self.ppmac.send_receive_raw(
@@ -251,6 +264,7 @@ class WrascPpmac(ra.Agent):
         fetch_cmds=None,
         verifiy_stats=None,
         cry_cmds=None,
+        cry_retries=1,
         celeb_cmds=None,
         pass_logs=None,
         csv_file_name=None,
@@ -279,6 +293,12 @@ class WrascPpmac(ra.Agent):
         self.celeb_cmds = validate_cmds(celeb_cmds)
         self.cry_cmds = validate_cmds(cry_cmds)
         self.fetch_cmds = validate_cmds(fetch_cmds)
+
+        self.cry_retries = cry_retries
+
+        # TODO change this crap[ solution
+        # floating digits used for == comparison
+        self.ndigits = 6
 
         self.ppmac = ppmac
 
@@ -342,9 +362,19 @@ class WrascPpmac(ra.Agent):
                 break
                 # return ra.StateLogics.Invalid, "comms error"
 
-            l_template = l_template.replace(
-                f"_var_{i}", tpl[0][1].strip("\n").strip(" ").split("=")[-1]
-            )
+            ret_val = tpl[0][1].strip("\n").strip(" ").split("=")[-1]
+
+            if not isPmacNumber(ret_val):
+                # treat this return as string
+                ret_val = f"'{ret_val}'"
+
+            elif ret_val.startswith("$"):
+                # check if it is a valid hex
+                ret_val = str(int(ret_val[1:], 16))
+            else:
+                ret_val = str(round(float(ret_val), self.ndigits))
+
+            l_template = l_template.replace(f"_var_{i}", ret_val)
 
         return l_template, statement
 
@@ -377,8 +407,7 @@ def done_condition_poi(ag_self: ra.Agent):
 
     # all done. Now decide based on a counrter to either quit or reset and repeat
     if ag_self.repeats > 0:
-        ag_self.repeats -= 1
-        return False, f"Resetting the loop, {ag_self.repeats} to go"
+        return False, f"Resetting the loop"
     else:
         return True, "Quitting..."
 
@@ -400,7 +429,9 @@ def arm_to_quit_aov(ag_self: ra.Agent):
 
             ag.poll.force(None, immediate=False)
 
-        return ra.StateLogics.Idle, "all ags reset..."
+        ag_self.repeats -= 1
+
+        return ra.StateLogics.Valid, f"all ags reset...{ag_self.repeats} to go"
 
 
 def quit_act_aoa(ag_self: ra.Agent):
