@@ -71,7 +71,7 @@ cry_cmds = [
 ]
 
 pass_conds = [cond.replace("=", "==") for cond in cry_cmds]
-m3_init_checks_ag = ppra.WrascPpmac(
+m3_init_checks_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
     pass_conds=pass_conds,
@@ -82,16 +82,16 @@ m3_init_checks_ag = ppra.WrascPpmac(
 # 1 - settle at staring point
 pass_conds, cry_cmds = ppra.assert_pos_wf(3, f"#{colliding_xx}p - 100", 1)
 
-m3_start_pos_ag = ppra.WrascPpmac(
+m3_start_pos_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
     pass_conds=pass_conds,
     cry_cmds=cry_cmds,
-    celeb_cmds=None,
+    celeb_cmds=[],
 )
 # -------------------------------------------------------------------
 # 2 - Move onto the minus limit and wait to stabilise
-m3_on_lim_ag = ppra.WrascPpmac(
+m3_on_lim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
     cry_cmds=[f"#{xx}j-"],
@@ -119,7 +119,7 @@ m3_on_lim_ag.act_on_armed = on_lim_aoa
 
 # -------------------------------------------------------------------
 # 3 - Arm Capture and slide off for capturing the falling edge
-m3_slide_off_ag = ppra.WrascPpmac(
+m3_slide_off_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
     cry_cmds=[
@@ -142,13 +142,12 @@ m3_slide_off_ag = ppra.WrascPpmac(
         f"Motor[{cc}].CapturedPos",
         f"#{cc}p",
         f"Motor[{cc}].CapturePos",
-        f"Motor[{cc}].Position",
     ],
     # resetting the changes in this action
     celeb_cmds=[f"Motor[{xx}].JogSpeed={JogSpeed}", f"#{cc}j/",],
 )
 
-m3_slide_off_ag.csv_file_name = path.join("autest_out", "s03_slide_off_ag.csv")
+m3_slide_off_ag.setup(csv_file_name=path.join("autest_out", "s03_slide_off_ag.csv"))
 
 
 def slide_off_aoa(ag_self: ra.Agent):

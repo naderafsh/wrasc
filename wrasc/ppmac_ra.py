@@ -5,6 +5,8 @@ from time import sleep
 import re
 from io import StringIO
 import csv
+import os
+import time
 
 """ ppmac basic agent. 
 This agent checks (watches) a list of statement conditions, 
@@ -207,8 +209,6 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
             # now log a line to cvs if there is one
             if ag_self.csvcontent and ag_self.csv_file_name:
 
-                # TODO if file exists, make a backup of the existing file
-
                 with open(ag_self.csv_file_name, "w+") as file:
                     file.write(ag_self.csvcontent)
                 ag_self.cvscontent = None
@@ -271,53 +271,33 @@ class Conditions(object):
         self.value = pars_conds(value)
 
 
-class WrascPpmac(ra.Agent):
+class WrascPmacGate(ra.Agent):
 
     ppmac = ...  # type : GpasciiClient
 
     def __init__(
         self,
         ppmac: GpasciiClient = None,
-        fetch_cmds=None,
-        pass_conds=None,
-        cry_cmds=None,
+        fetch_cmds=[],
+        pass_conds=[],
+        cry_cmds=[],
         cry_retries=1,
-        celeb_cmds=None,
-        pass_logs=None,
+        celeb_cmds=[],
+        pass_logs=[],
         csv_file_name=None,
         **kwargs,
     ):
 
+        self.fetch_cmds = []
+        self.pass_conds = []
+        self.cry_cmds = []
+        self.cry_retries = 1
+        self.celeb_cmds = []
+        self.pass_logs = []
+
         if not ppmac or (not isinstance(ppmac, GpasciiClient)):
             self.dmAgentType = "uninitialised"
             return
-
-        self.verifies = pars_conds(pass_conds)
-        # log_stats need to be fetched with verifies, stored, and logged at celeb.
-        self.log_stats = pars_conds(pass_logs)
-        self.csv_file_name = csv_file_name
-
-        # setup the headers, they get written when (and only if) the first set of readings are ready
-        if self.log_stats:
-            headers = ["Time"] + list(list(zip(*self.log_stats))[2])
-            # remove and reshape special caharacters headers
-
-            headers = [normalise_header(header) for header in headers]
-
-            self.csvcontent = ",".join(map(str, headers)) + "\n"
-        else:
-            # self.log_vals = []
-            self.csvcontent = None
-
-        self.celeb_cmds = validate_cmds(celeb_cmds)
-        self.cry_cmds = validate_cmds(cry_cmds)
-        self.fetch_cmds = validate_cmds(fetch_cmds)
-
-        self.cry_retries = cry_retries
-
-        # TODO change this crap[ solution
-        # floating digits used for == comparison
-        self.ndigits = 6
 
         self.ppmac = ppmac
 
@@ -334,18 +314,95 @@ class WrascPpmac(ra.Agent):
                     )
                 sleep(0.1)
 
+        self.log_stats = []
+        self.csv_file_name = None
         # if you are here, then we have an agent to intialise
 
         super().__init__(
             poll_in=ppwr_poll_in,
             act_on_invalid=ppwr_act_on_invalid,
             act_on_valid=ppwr_act_on_valid,
+            fetch_cmds=fetch_cmds,
+            pass_conds=pass_conds,
+            cry_cmds=cry_cmds,
+            cry_retries=cry_retries,
+            celeb_cmds=celeb_cmds,
+            pass_logs=pass_logs,
+            csv_file_name=csv_file_name,
             **kwargs,
         )
         self.dmAgentType = "ppmac_wrasc"
-        # compile statement lists
 
-    def setup(self, **kwargs):
+    def setup(
+        self,
+        fetch_cmds=None,
+        pass_conds=None,
+        cry_cmds=None,
+        cry_retries=None,
+        celeb_cmds=None,
+        pass_logs=None,
+        csv_file_name=None,
+        **kwargs,
+    ):
+        if pass_conds:
+            self.verifies = pars_conds(pass_conds)
+        # log_stats need to be fetched with verifies, stored, and logged at celeb.
+        if pass_logs:
+            self.log_stats = pars_conds(pass_logs)
+
+        if csv_file_name:
+            self.csv_file_name = csv_file_name
+
+        # setup the headers, they get written when (and only if) the first set of readings are ready
+        if self.log_stats:
+            headers = ["Time"] + list(list(zip(*self.log_stats))[2])
+            # remove and reshape special caharacters headers
+
+            headers = [normalise_header(header) for header in headers]
+
+            self.csvcontent = ",".join(map(str, headers)) + "\n"
+
+            if self.csvcontent and self.csv_file_name:
+
+                # if file exists, make a backup of the existing file
+                # do not leave until the file doesn't exist!
+                n_copies = 0
+                while os.path.exists(self.csv_file_name):
+                    name, ext = os.path.splitext(self.csv_file_name)
+                    modif_time_str = time.strftime(
+                        "%y%m%d_%H%M",
+                        time.localtime(os.path.getmtime(self.csv_file_name)),
+                    )
+                    n_copies_str = f"({n_copies})" if n_copies > 0 else ""
+                    try:
+                        os.rename(
+                            self.csv_file_name,
+                            f"{name}_{modif_time_str}{n_copies_str}{ext}",
+                        )
+                    except FileExistsError:
+                        # forget it... the file is already archived...
+                        # TODO or you need to be too fussy and break the execution for this?
+                        n_copies = +1
+
+                open(self.csv_file_name, "w+")
+
+        else:
+            # self.log_vals = []
+            self.csvcontent = None
+
+        if celeb_cmds:
+            self.celeb_cmds = validate_cmds(celeb_cmds)
+        if cry_cmds:
+            self.cry_cmds = validate_cmds(cry_cmds)
+        if fetch_cmds:
+            self.fetch_cmds = validate_cmds(fetch_cmds)
+        if cry_retries:
+            self.cry_retries = cry_retries
+
+        # TODO change this crap[ solution
+        # floating digits used for == comparison
+        self.ndigits = 6
+
         super().setup(**kwargs)
 
     def expand_cmd_str(self, cmds_str):
