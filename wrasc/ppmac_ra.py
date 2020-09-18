@@ -243,6 +243,19 @@ def ppwr_act_on_invalid(ag_self: ra.Agent):
     return ra.StateLogics.Idle, "reacted to invalid"
 
 
+def normalise_header(_header):
+
+    _header = re.sub(r"[[\]]", "_", _header)
+    _header = re.sub(r"(?<=#\d)(p)", "_Pos", _header)
+    _header = re.sub(r"(?<=#\d\d)(p)", "_Pos", _header)
+    _header = re.sub(r"(#)(?=\d+)", "Axis_", _header)
+    _header = re.sub(r"(#)(?=\d\d)", "Axis_", _header)
+
+    _header = re.sub(r"[\.]", "", _header)
+
+    return _header
+
+
 class Conditions(object):
     def __init__(self, value=None):
         self.value = pars_conds(value)
@@ -262,7 +275,7 @@ class WrascPpmac(ra.Agent):
         self,
         ppmac: GpasciiClient = None,
         fetch_cmds=None,
-        verifiy_stats=None,
+        pass_conds=None,
         cry_cmds=None,
         cry_retries=1,
         celeb_cmds=None,
@@ -275,7 +288,7 @@ class WrascPpmac(ra.Agent):
             self.dmAgentType = "uninitialised"
             return
 
-        self.verifies = pars_conds(verifiy_stats)
+        self.verifies = pars_conds(pass_conds)
         # log_stats need to be fetched with verifies, stored, and logged at celeb.
         self.log_stats = pars_conds(pass_logs)
         self.csv_file_name = csv_file_name
@@ -283,8 +296,10 @@ class WrascPpmac(ra.Agent):
         # setup the headers, they get written when (and only if) the first set of readings are ready
         if self.log_stats:
             headers = ["Time"] + list(list(zip(*self.log_stats))[2])
-            # self.log_vals = headers
-            # self.writer.writerow(headers)
+            # remove and reshape special caharacters headers
+
+            headers = [normalise_header(header) for header in headers]
+
             self.csvcontent = ",".join(map(str, headers)) + "\n"
         else:
             # self.log_vals = []

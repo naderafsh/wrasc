@@ -5,8 +5,20 @@ from os import environ, path
 from ppmac import GpasciiClient
 from math import isclose
 
+""" This script is using wrasc ppmac_ra. 
+The module provides predefined warsc Agents which are customised to control a sequence 
+in a ppmac by sending and checking ppmac native commands.
+Each Agent has a Pass Condition. The Agents then can e forced to an "anchored sequence"
+
+The aoa method of the Agent can be used to implement additional functions which execute after pass condition is met.
+
+Returns:
+    [type]: [description]
+"""
+
+
 _VERBOSE_ = 2
-wracs_period = 0.1
+wracs_period = 0.250
 n_repeats = 30
 
 # test code
@@ -37,6 +49,7 @@ JogSpeed_max = 6.4
 
 HomeVel = 1.28 / 10
 InPosTime = 255  # ms
+trigOffset = 100
 
 # -------------------------------------------------------------------
 # 0 - check configuration
@@ -51,16 +64,19 @@ cry_cmds = [
     f"Motor[{cc}].pCaptPos=Motor[{xx}].pCaptPos",
     f"Motor[{cc}].LimitBits=Motor[{xx}].LimitBits",
     f"Motor[{cc}].CaptureMode=1",
+    # set the following error of the companion axis out of the way
+    f"Motor[{cc}].FatalFeLimit=9999999",
+    # f"Motor[{cc}].ServoCaptTimeOffset = 3",
     f"Motor[{xx}].CaptureMode=0",
     f"PowerBrick[{L2}].Chan[{L3}].CaptCtrl=10",
     f"Motor[{xx}].JogSpeed={JogSpeed}",
 ]
 
 pass_conds = [cond.replace("=", "==") for cond in cry_cmds]
-s00_init_checks_ag = ppra.WrascPpmac(
+m3_init_checks_ag = ppra.WrascPpmac(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
-    verifiy_stats=pass_conds,
+    pass_conds=pass_conds,
     cry_cmds=cry_cmds,
     celeb_cmds=None,
 )
@@ -68,31 +84,23 @@ s00_init_checks_ag = ppra.WrascPpmac(
 # 1 - settle at staring point
 pass_conds, cry_cmds = ppra.assert_pos_wf(3, f"#{colliding_xx}p - 100", 1)
 
-s01_start_pos_ag = ppra.WrascPpmac(
+m3_start_pos_ag = ppra.WrascPpmac(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
-    verifiy_stats=pass_conds,
+    pass_conds=pass_conds,
     cry_cmds=cry_cmds,
     celeb_cmds=None,
 )
 # -------------------------------------------------------------------
-# 2 - put it on the minus limit and log previously captured values
-s02_on_lim_ag = ppra.WrascPpmac(
+# 2 - Move onto the minus limit and wait to stabilise
+m3_on_lim_ag = ppra.WrascPpmac(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
     cry_cmds=[f"Motor[{xx}].InPosTime={InPosTime}", f"#{xx}j-"],
-    verifiy_stats=[f"Motor[{xx}].MinusLimit > 0", f"Motor[{xx}].InPos > 0"],
+    pass_conds=[f"Motor[{xx}].MinusLimit > 0", f"Motor[{xx}].InPos > 0"],
     # also, log the previous capture values
-    pass_logs=[
-        f"Motor[{xx}].CapturedPos",
-        f"Motor[{cc}].CapturedPos",
-        f"#{cc}p",
-        f"Motor[{xx}].JogSpeed",
-    ],
-    celeb_cmds=[f"Motor[{xx}].InPosTime=10"],
+    celeb_cmds=[],
 )
-# add a log filename
-s02_on_lim_ag.csv_file_name = path.join("autest_out", "capt_logs.csv")
 
 
 def on_lim_aoa(ag_self: ra.Agent):
@@ -106,29 +114,45 @@ def on_lim_aoa(ag_self: ra.Agent):
     return ra.StateLogics.Done, "user aoa done."
 
 
-s02_on_lim_ag.dwell_on_limit = 0.1
-s02_on_lim_ag.dwell_on_limit_rate = 0.1
-s02_on_lim_ag.dwell_on_limit_max = 3
-s02_on_lim_ag.act_on_armed = on_lim_aoa
+m3_on_lim_ag.dwell_on_limit = 0.1
+m3_on_lim_ag.dwell_on_limit_rate = 0.1
+m3_on_lim_ag.dwell_on_limit_max = 3
+m3_on_lim_ag.act_on_armed = on_lim_aoa
 
 # -------------------------------------------------------------------
-# 3 - Arm and slide off for capturing the falling edge
-s03_slide_off_ag = ppra.WrascPpmac(
+# 3 - Arm Capture and slide off for capturing the falling edge
+m3_slide_off_ag = ppra.WrascPpmac(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
     cry_cmds=[
-        f"Motor[{xx}].JogSpeed={HomeVel}",
-        f"#{xx}j:2000^0",
-        # f"Motor[{xx}].CapturePos=1",
         f"Motor[{cc}].CapturePos=1",
+        f"Motor[{xx}].JogSpeed={HomeVel}",
+        f"#{xx}j:2000^{trigOffset}",
+        # companion axis is fooled to think it is jogging
+        f"Motor[{cc}].JogSpeed={0.00001}",
+        f"#{cc}j:10^{0}",
     ],
-    verifiy_stats=[
+    pass_conds=[
         f"Motor[{xx}].MinusLimit==0",
         f"Motor[{xx}].PlusLimit==0",
         f"Motor[{xx}].InPos > 0",
+        # this will catch the missed captures, but does'nt provide a retry...
+        # f"Motor[{cc}].CapturePos==0",
     ],
-    celeb_cmds=[f"Motor[{xx}].JogSpeed={JogSpeed}",],
+    pass_logs=[
+        f"Motor[{xx}].CapturedPos",
+        f"#{xx}p",
+        f"Motor[{xx}].JogSpeed",
+        f"Motor[{cc}].CapturedPos",
+        f"#{cc}p",
+        f"Motor[{cc}].CapturePos",
+        f"Motor[{cc}].Position",
+    ],
+    # resetting the changes in this action
+    celeb_cmds=[f"Motor[{xx}].JogSpeed={JogSpeed}", f"#{cc}j/",],
 )
+
+m3_slide_off_ag.csv_file_name = path.join("autest_out", "s03_slide_off_ag.csv")
 
 
 def slide_off_aoa(ag_self: ra.Agent):
@@ -142,29 +166,29 @@ def slide_off_aoa(ag_self: ra.Agent):
     return ra.StateLogics.Done, "user aoa done."
 
 
-s03_slide_off_ag.dwell_off_limit = 0.01
+m3_slide_off_ag.dwell_off_limit = 0.01
 
 # s03_slide_off_ag.JogSpeed = 1
 # s03_slide_off_ag.JogSpeed_rate = 0
 # s03_slide_off_ag.JogSpeed_max = 6.4
-s03_slide_off_ag.act_on_armed = slide_off_aoa
+m3_slide_off_ag.act_on_armed = slide_off_aoa
 
 # -------------------------------------------------------------------
 
 
 # setup the sequence default dependency (can be done automaticatlly)
 
-s00_init_checks_ag.poll_pr = lambda ag_self: True
-s01_start_pos_ag.poll_pr = lambda ag_self: s00_init_checks_ag.act.Var
-s02_on_lim_ag.poll_pr = lambda ag_self: s01_start_pos_ag.act.Var
-s03_slide_off_ag.poll_pr = lambda ag_self: s02_on_lim_ag.act.Var
+m3_init_checks_ag.poll_pr = lambda ag_self: True
+m3_start_pos_ag.poll_pr = lambda ag_self: m3_init_checks_ag.act.Var
+m3_on_lim_ag.poll_pr = lambda ag_self: m3_start_pos_ag.act.Var
+m3_slide_off_ag.poll_pr = lambda ag_self: m3_on_lim_ag.act.Var
 
 # -------------------------------------------------------------------
 
 # now setup a sequencer
 quit_if_all_done_ag = ppra.WrascSequencer(verbose=_VERBOSE_)
 quit_if_all_done_ag.repeats = n_repeats
-quit_if_all_done_ag.last_layer_dependency_ag = s03_slide_off_ag
+quit_if_all_done_ag.last_layer_dependency_ag = m3_slide_off_ag
 
 # ----------------------------------------------------------------------
 
