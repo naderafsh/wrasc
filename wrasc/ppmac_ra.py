@@ -167,7 +167,11 @@ def ppwr_poll_in(ag_self: ra.Agent):
 
         if verify_text:
             # store eval(verify_text) in the logs dict:
-            vals.append(eval(verify_text))
+            if isPmacNumber(verify_text):
+                vals.append(eval(verify_text))
+            else:
+                # text value
+                vals.append(verify_text)
     if len(vals) > 1:
         ag_self.csvcontent += ",".join(map(str, vals)) + "\n"
 
@@ -373,7 +377,7 @@ class WrascPpmac(ra.Agent):
 
             if not tpl[1]:
                 self.poll.Var = None
-                l_template = None
+                l_template = "Err"
                 break
                 # return ra.StateLogics.Invalid, "comms error"
 

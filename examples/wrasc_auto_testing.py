@@ -48,7 +48,6 @@ JogSpeed_rate = 0
 JogSpeed_max = 6.4
 
 HomeVel = 1.28 / 10
-InPosTime = 255  # ms
 trigOffset = 100
 
 # -------------------------------------------------------------------
@@ -66,7 +65,6 @@ cry_cmds = [
     f"Motor[{cc}].CaptureMode=1",
     # set the following error of the companion axis out of the way
     f"Motor[{cc}].FatalFeLimit=9999999",
-    # f"Motor[{cc}].ServoCaptTimeOffset = 3",
     f"Motor[{xx}].CaptureMode=0",
     f"PowerBrick[{L2}].Chan[{L3}].CaptCtrl=10",
     f"Motor[{xx}].JogSpeed={JogSpeed}",
@@ -96,8 +94,8 @@ m3_start_pos_ag = ppra.WrascPpmac(
 m3_on_lim_ag = ppra.WrascPpmac(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
-    cry_cmds=[f"Motor[{xx}].InPosTime={InPosTime}", f"#{xx}j-"],
-    pass_conds=[f"Motor[{xx}].MinusLimit > 0", f"Motor[{xx}].InPos > 0"],
+    cry_cmds=[f"#{xx}j-"],
+    pass_conds=[f"Motor[{xx}].MinusLimit>0", f"Motor[{xx}].InPos>0"],
     # also, log the previous capture values
     celeb_cmds=[],
 )
@@ -135,9 +133,7 @@ m3_slide_off_ag = ppra.WrascPpmac(
     pass_conds=[
         f"Motor[{xx}].MinusLimit==0",
         f"Motor[{xx}].PlusLimit==0",
-        f"Motor[{xx}].InPos > 0",
-        # this will catch the missed captures, but does'nt provide a retry...
-        # f"Motor[{cc}].CapturePos==0",
+        f"Motor[{xx}].InPos>0",
     ],
     pass_logs=[
         f"Motor[{xx}].CapturedPos",
