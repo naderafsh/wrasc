@@ -872,58 +872,59 @@ class Agent(object):
         self.act.last_message = return_message
         return self.state(), return_message
 
+    def annotate(self):
 
-def annotate(agent: Agent):
+        status = self.state()
+        agname = self.name
+        poll_message = self.poll.last_message
+        print_str = desc_str = in_var_str = ""
 
-    status = agent.state()
-    agname = agent.name
-    poll_message = agent.poll.last_message
-    print_str = desc_str = in_var_str = ""
+        abbreviated_status = status[0][0] + status[1][0]
+        in_var_str = "nil"
+        if self.verbose > 0:
+            if isinstance(self.poll.Var, dict):
+                in_var_str = "<"
+                for key in self.poll.Var:
+                    if self.poll.Var[key] is None:
+                        in_var_str += " {}:None ".format(key)
+                    elif isinstance(self.poll.Var[key], str):
+                        in_var_str += " {}:{} ".format(key, self.poll.Var[key])
+                    else:
+                        in_var_str += " {}:{:.3E} ".format(
+                            key, float(self.poll.Var[key])
+                        )
+                in_var_str += ">"
 
-    abbreviated_status = status[0][0] + status[1][0]
-    in_var_str = "nil"
-    if agent.verbose > 0:
-        if isinstance(agent.poll.Var, dict):
-            in_var_str = "<"
-            for key in agent.poll.Var:
-                if agent.poll.Var[key] is None:
-                    in_var_str += " {}:None ".format(key)
-                elif isinstance(agent.poll.Var[key], str):
-                    in_var_str += " {}:{} ".format(key, agent.poll.Var[key])
-                else:
-                    in_var_str += " {}:{:.3E} ".format(key, float(agent.poll.Var[key]))
-            in_var_str += ">"
+            else:
+                in_var_str = "{}".format(self.poll.Var)
 
-        else:
-            in_var_str = "{}".format(agent.poll.Var)
+            _str = "<" + agent_var_debug_format.format(
+                agname,
+                abbreviated_status,
+                poll_message,
+                in_var_str,
+                "" if self.unit is None else self.unit,
+            )
 
-        _str = "<" + agent_var_debug_format.format(
-            agname,
-            abbreviated_status,
-            poll_message,
-            in_var_str,
-            "" if agent.unit is None else agent.unit,
-        )
+            desc_str = '{0}({2} {3}) "{1}" "{4}"'.format(
+                abbreviated_status,
+                poll_message,
+                in_var_str,
+                "" if self.unit is None else self.unit,
+                self.act.last_message,
+            )
 
-        desc_str = '{0}({2} {3}) "{1}" "{4}"'.format(
-            abbreviated_status,
-            poll_message,
-            in_var_str,
-            "" if agent.unit is None else agent.unit,
-            agent.act.last_message,
-        )
+            if self.poll.Changed and self.verbose > 1:
+                desc_str = "**" + desc_str
+                print_str = "{} {}".format(agname, desc_str)
+            elif self.verbose > 2:
+                desc_str = "* " + desc_str
+                print_str = "{} {}".format(agname, desc_str)
+            else:
+                print_str = ""
+                desc_str = "  " + desc_str
 
-        if agent.poll.Changed and agent.verbose > 1:
-            desc_str = "**" + desc_str
-            print_str = "{} {}".format(agname, desc_str)
-        elif agent.verbose > 2:
-            desc_str = "* " + desc_str
-            print_str = "{} {}".format(agname, desc_str)
-        else:
-            print_str = ""
-            desc_str = "  " + desc_str
-
-    return print_str, desc_str, in_var_str
+        return print_str, desc_str, in_var_str
 
 
 class SeverityAg(Agent):
@@ -1005,7 +1006,7 @@ def inference(sorted_ag_list, ag_states, max_minor_cycle=1, debug=False):
                 # this is a RA command:
                 ra_commands.add(return_message)
 
-            print_str, desc_str, in_var_str = annotate(agent)
+            print_str, desc_str, in_var_str = agent.annotate()
 
             if agent.verbose > 0:
                 if len(print_str) and debug:

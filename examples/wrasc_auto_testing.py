@@ -32,11 +32,11 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 
 # pmac parameters
 
-xx = 3
-L2 = int(xx / 4)
-L3 = xx % 4 - 1
+L1 = 3
+L2 = int(L1 / 4)
+L3 = L1 % 4 - 1
 # companion axis
-cc = xx + 8
+L7 = L1 + 8
 # restrictive axis
 colliding_xx = 4
 encoder_possf = 2000 / 12256 * 2000 / 2050 * 1000 / 992
@@ -54,20 +54,20 @@ trigOffset = 100
 # 0 - check configuration
 
 cry_cmds = [
-    # f"Motor[{cc}].PosSf = {encoder_possf}",
-    # f"EncTable[{cc}].ScaleFactor = -1/256",
+    # "Motor[L7].PosSf = {encoder_possf}",
+    # "EncTable[L7].ScaleFactor = -1/256",
     # put EncType first, as it resets pCaptFlag and pCaptPos !!!!
-    f"Motor[{cc}].EncType=Motor[{xx}].EncType",
-    f"Motor[{cc}].CaptControl=Motor[{xx}].CaptControl",
-    f"Motor[{cc}].pCaptFlag=Motor[{xx}].pCaptFlag",
-    f"Motor[{cc}].pCaptPos=Motor[{xx}].pCaptPos",
-    f"Motor[{cc}].LimitBits=Motor[{xx}].LimitBits",
-    f"Motor[{cc}].CaptureMode=1",
+    "Motor[L7].EncType=Motor[L1].EncType",
+    "Motor[L7].CaptControl=Motor[L1].CaptControl",
+    "Motor[L7].pCaptFlag=Motor[L1].pCaptFlag",
+    "Motor[L7].pCaptPos=Motor[L1].pCaptPos",
+    "Motor[L7].LimitBits=Motor[L1].LimitBits",
+    "Motor[L7].CaptureMode=1",
     # set the following error of the companion axis out of the way
-    f"Motor[{cc}].FatalFeLimit=9999999",
-    f"Motor[{xx}].CaptureMode=0",
-    f"PowerBrick[{L2}].Chan[{L3}].CaptCtrl=10",
-    f"Motor[{xx}].JogSpeed={JogSpeed}",
+    "Motor[L7].FatalFeLimit=9999999",
+    "Motor[L1].CaptureMode=0",
+    "PowerBrick[L2].Chan[L3].CaptCtrl=10",
+    "Motor[L1].JogSpeed={JogSpeed}",
 ]
 
 pass_conds = [cond.replace("=", "==") for cond in cry_cmds]
@@ -77,6 +77,11 @@ m3_init_checks_ag = ppra.WrascPmacGate(
     pass_conds=pass_conds,
     cry_cmds=cry_cmds,
     celeb_cmds=None,
+    L1=L1,
+    L2=L2,
+    L3=L3,
+    L7=L7,
+    JogSpeed=JogSpeed,
 )
 # -------------------------------------------------------------------
 # 1 - settle at staring point
@@ -88,16 +93,22 @@ m3_start_pos_ag = ppra.WrascPmacGate(
     pass_conds=pass_conds,
     cry_cmds=cry_cmds,
     celeb_cmds=[],
+    L1=L1,
+    L2=L2,
+    L3=L3,
+    L7=L7,
+    JogSpeed=JogSpeed,
 )
 # -------------------------------------------------------------------
 # 2 - Move onto the minus limit and wait to stabilise
 m3_on_lim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
-    cry_cmds=[f"#{xx}j-"],
-    pass_conds=[f"Motor[{xx}].MinusLimit>0", f"Motor[{xx}].InPos>0"],
+    cry_cmds=["#{L1}j-"],
+    pass_conds=["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"],
     # also, log the previous capture values
     celeb_cmds=[],
+    L1=L1,
 )
 
 
@@ -123,28 +134,34 @@ m3_slide_off_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
     cry_cmds=[
-        f"Motor[{cc}].CapturePos=1",
-        f"Motor[{xx}].JogSpeed={HomeVel}",
-        f"#{xx}j:2000^{trigOffset}",
+        "Motor[L7].CapturePos=1",
+        "Motor[L1].JogSpeed={HomeVel}",
+        "#{L1}j:2000^{trigOffset}",
         # companion axis is fooled to think it is jogging
-        f"Motor[{cc}].JogSpeed={0.00001}",
-        f"#{cc}j:10^{0}",
+        "Motor[L7].JogSpeed=0.00001",
+        "#{L7}j:10^0",
     ],
     pass_conds=[
-        f"Motor[{xx}].MinusLimit==0",
-        f"Motor[{xx}].PlusLimit==0",
-        f"Motor[{xx}].InPos>0",
+        "Motor[L1].MinusLimit==0",
+        "Motor[L1].PlusLimit==0",
+        "Motor[L1].InPos>0",
     ],
     pass_logs=[
-        f"Motor[{xx}].CapturedPos",
-        f"#{xx}p",
-        f"Motor[{xx}].JogSpeed",
-        f"Motor[{cc}].CapturedPos",
-        f"#{cc}p",
-        f"Motor[{cc}].CapturePos",
+        "Motor[L1].CapturedPos",
+        "#{L1}p",
+        "Motor[L1].JogSpeed",
+        "Motor[L7].CapturedPos",
+        "#{L7}p",
+        "Motor[L7].CapturePos",
     ],
     # resetting the changes in this action
-    celeb_cmds=[f"Motor[{xx}].JogSpeed={JogSpeed}", f"#{cc}j/",],
+    celeb_cmds=["Motor[L1].JogSpeed={JogSpeed}", "#{L7}j/",],
+    L1=L1,
+    L2=L2,
+    L7=L7,
+    JogSpeed=JogSpeed,
+    trigOffset=trigOffset,
+    HomeVel=HomeVel,
 )
 
 m3_slide_off_ag.setup(csv_file_name=path.join("autest_out", "s03_slide_off_ag.csv"))

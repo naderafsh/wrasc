@@ -34,7 +34,8 @@ def assert_pos_wf(xx: int, pos, tol):
         pos = str(pos)
         pos_hi = f"{pos} + {tol}"
         pos_lo = f"{pos} - {tol}"
-        target_pos = macrostrs[0] + pos + macrostrs[1]
+        # target_pos = macrostrs[0] + pos + macrostrs[1]
+        target_pos = pos
     else:
         pos_hi = pos + tol
         pos_lo = pos - tol
@@ -81,6 +82,8 @@ def parse_vars(any_side: str):
     #     for cond in cry_cmds
     # ]
 
+    # sub macros here?
+
     all_vars = []
     # any_side: no change if it is a ppmacnumber, or an address
     if not (isPmacNumber(any_side) or any_side.endswith(".a")):
@@ -101,12 +104,28 @@ def validate_cmds(cmds):
         return None
 
     if isinstance(cmds, str):
-        return cmds
-    elif isinstance(cmds, list):
-        # convert list to one string of lines
-        return "\n".join(cmds)
-    else:
+        cmds = [cmds]
+
+    if not isinstance(cmds, list):
         raise RuntimeError(f"bad command: {cmds}")
+
+    # convert list to one string of lines
+    cmds_out = []
+    for cmd in cmds:
+        # separate right and left side
+        cmd_split = cmd.split("=")
+        cmd_left = cmd_split[0]
+        if len(cmd_split) > 1:
+            cmd_right = cmd_split[1]
+            if (not isPmacNumber(cmd_right)) and any(i in cmd_right for i in "+-*/^"):
+                # right side is ILLEGAL as a ppmac online command. Mark it as a macro for late evaluation
+                cmd_right = macrostrs[0] + cmd_right + macrostrs[1]
+
+            cmds_out.append(f"{cmd_left}={cmd_right}")
+        else:
+            cmds_out.append(cmd)
+
+    return "\n".join(cmds_out)
 
 
 def pars_conds(conds_list):
@@ -129,6 +148,50 @@ def pars_conds(conds_list):
         parsed_conds.append([l_template, l_vars, cond])
 
     return parsed_conds
+
+
+def expand_pmac_stats(stats, **vars):
+
+    # this function expands the ppmac statements for the channel parmeters
+    # parameters shall be in the form of L1 ... L10 or {whatever}
+    # all of the variables shall be supplies via **vars
+    #
+    # this allows to scale the templates for different channel configuration
+
+    # first, some type checking
+
+    if not stats:
+        return stats
+
+    if isinstance(stats, str):
+        stats = [stats]
+
+    assert isinstance(stats, list)
+
+    stats_out = []
+    # expand the stats one by one
+    for stat in stats:
+        # support base L# format by reverting L# to {L#}
+        stat = re.sub(r"(\[)(?=L\d)", "[{", stat)
+        stat = re.sub(r"(?<=L\d)(\])", "}]", stat)
+
+        try:
+            stats_out.append(stat.format(**vars))
+        except KeyError:
+            # if there is a macro which can't be found in vars, then leave it!
+            stats_out.append(stat)
+        except ValueError:
+            # this is probably more serious...
+            stats_out.append(stat)
+        except IndexError:
+            # this is probably a syntax issue,
+            # e.g. something other than a variable is passed as a macro
+            # e.g. {0.2} is passed
+            raise RuntimeError(f"syntax error in ppmac statement: {stat} ")
+
+            stats_out.append(stat)
+
+    return stats_out
 
 
 def ppwr_poll_pr(ag_self: ra.Agent):
@@ -198,7 +261,7 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
         else:
             if ag_self.celeb_cmds:
                 resp = ag_self.ppmac.send_receive_raw(
-                    ag_self.expand_cmd_str(ag_self.celeb_cmds)
+                    ag_self.eval_cmd(ag_self.celeb_cmds)
                 )
             else:
                 resp = ""
@@ -233,9 +296,7 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
             return ra.StateLogics.Idle, f"{ag_self.cry_retries} retries exhausted"
 
         if ag_self.cry_cmds:
-            resp = ag_self.ppmac.send_receive_raw(
-                ag_self.expand_cmd_str(ag_self.cry_cmds)
-            )
+            resp = ag_self.ppmac.send_receive_raw(ag_self.eval_cmd(ag_self.cry_cmds))
             return ra.StateLogics.Idle, "Fix action"
 
         return ra.StateLogics.Idle, "No action !!!"
@@ -243,7 +304,7 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
 
 def ppwr_act_on_invalid(ag_self: ra.Agent):
     if ag_self.fetch_cmds:
-        ag_self.ppmac.send_receive_raw(ag_self.expand_cmd_str(ag_self.fetch_cmds))
+        ag_self.ppmac.send_receive_raw(ag_self.eval_cmd(ag_self.fetch_cmds))
     return ra.StateLogics.Idle, "reacted to invalid"
 
 
@@ -344,11 +405,15 @@ class WrascPmacGate(ra.Agent):
         csv_file_name=None,
         **kwargs,
     ):
+
+        # every one of cmds and conds pass this point,
+        # so its best to esxpand them here
+
         if pass_conds:
-            self.verifies = pars_conds(pass_conds)
+            self.verifies = pars_conds(expand_pmac_stats(pass_conds, **kwargs))
         # log_stats need to be fetched with verifies, stored, and logged at celeb.
         if pass_logs:
-            self.log_stats = pars_conds(pass_logs)
+            self.log_stats = pars_conds(expand_pmac_stats(pass_logs, **kwargs))
 
         if csv_file_name:
             self.csv_file_name = csv_file_name
@@ -391,11 +456,11 @@ class WrascPmacGate(ra.Agent):
             self.csvcontent = None
 
         if celeb_cmds:
-            self.celeb_cmds = validate_cmds(celeb_cmds)
+            self.celeb_cmds = validate_cmds(expand_pmac_stats(celeb_cmds, **kwargs))
         if cry_cmds:
-            self.cry_cmds = validate_cmds(cry_cmds)
+            self.cry_cmds = validate_cmds(expand_pmac_stats(cry_cmds, **kwargs))
         if fetch_cmds:
-            self.fetch_cmds = validate_cmds(fetch_cmds)
+            self.fetch_cmds = validate_cmds(expand_pmac_stats(fetch_cmds, **kwargs))
         if cry_retries:
             self.cry_retries = cry_retries
 
@@ -405,9 +470,11 @@ class WrascPmacGate(ra.Agent):
 
         super().setup(**kwargs)
 
-    def expand_cmd_str(self, cmds_str):
+    def eval_cmd(self, cmds_str):
 
-        # expand {} macros with actual values from ppmac
+        # evaluate {} macros with actual values from ppmac
+        # this is done at the very late stage i.e. as late as possible.
+        # As opposed to this one,
 
         macro_list = re.findall(f"(?:{macrostrs[0]})(.*?)(?:{macrostrs[1]})", cmds_str)
 
