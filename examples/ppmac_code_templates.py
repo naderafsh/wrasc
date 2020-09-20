@@ -1,4 +1,4 @@
-def assert_pos_wf(xx: int, pos, tol):
+def assert_pos_wf(xx: int, target_pos, tol):
     """
 
     retuns 
@@ -6,17 +6,16 @@ def assert_pos_wf(xx: int, pos, tol):
     2 - default jog statement to move the motor there if not already there
 
     """
-    if isinstance(pos, str) or isinstance(tol, str):
+    if isinstance(target_pos, str) or isinstance(tol, str):
         tol = str(tol)
-        pos = str(pos)
-        pos_hi = f"{pos} + {tol}"
-        pos_lo = f"{pos} - {tol}"
-        # target_pos = macrostrs[0] + pos + macrostrs[1]
-        target_pos = pos
+        target_pos = str(target_pos)
+        pos_hi = f"{target_pos} + {tol}"
+        pos_lo = f"{target_pos} - {tol}"
+
     else:
-        pos_hi = pos + tol
-        pos_lo = pos - tol
-        target_pos = pos
+        pos_hi = target_pos + tol
+        pos_lo = target_pos - tol
+
     return (
         [
             f"#{xx}p < {pos_hi}",

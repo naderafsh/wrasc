@@ -1,4 +1,4 @@
-from wrasc import reactive_agent as ra
+from wrasc import reactive_target_posnt as ra
 from wrasc import ppmac_ra as ppra
 from wrasc import gpcom_wrap
 from os import environ, path
@@ -33,7 +33,7 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 
 # pmac parameters
 
-L1 = 4
+L1 = 3
 L2 = int(L1 / (4 + 1))
 L3 = L1 - 4 * L2 - 1
 # companion axis
@@ -127,7 +127,7 @@ m3_slide_off_ag = ppra.WrascPmacGate(
     pass_conds=tls.check_off_limit_inpos_tl,
     pass_logs=tls.log_capt_rbk_tl,
     # resetting the changes in this action
-    celeb_cmds=tls.reset_rbk_capt_tl,
+    celeb_cmds=tls.reset_rbk_capt_tl + ["#{L1}hmz"],
     # and the macro substitutes
     L1=L1,
     L2=L2,
