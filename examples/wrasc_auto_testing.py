@@ -4,6 +4,7 @@ from wrasc import gpcom_wrap
 from os import environ, path
 from ppmac import GpasciiClient
 from math import isclose
+import examples.ppmac_code_templates as tls
 
 """ This script is using wrasc ppmac_ra. 
 The module provides predefined warsc Agents which are customised to control a sequence 
@@ -32,13 +33,13 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 
 # pmac parameters
 
-L1 = 3
-L2 = int(L1 / 4)
-L3 = L1 % 4 - 1
+L1 = 4
+L2 = int(L1 / (4 + 1))
+L3 = L1 - 4 * L2 - 1
 # companion axis
 L7 = L1 + 8
 # restrictive axis
-colliding_xx = 4
+colliding_xx = 4 if L1 == 3 else 3
 encoder_possf = 2000 / 12256 * 2000 / 2050 * 1000 / 992
 
 # test parameters
@@ -50,32 +51,17 @@ JogSpeed_max = 6.4
 HomeVel = 1.28 / 10
 trigOffset = 100
 
+CaptureJogDir = "+"
+MoveToLimitDir = "-"
+
 # -------------------------------------------------------------------
 # 0 - check configuration
 
-cry_cmds = [
-    # "Motor[L7].PosSf = {encoder_possf}",
-    # "EncTable[L7].ScaleFactor = -1/256",
-    # put EncType first, as it resets pCaptFlag and pCaptPos !!!!
-    "Motor[L7].EncType=Motor[L1].EncType",
-    "Motor[L7].CaptControl=Motor[L1].CaptControl",
-    "Motor[L7].pCaptFlag=Motor[L1].pCaptFlag",
-    "Motor[L7].pCaptPos=Motor[L1].pCaptPos",
-    "Motor[L7].LimitBits=Motor[L1].LimitBits",
-    "Motor[L7].CaptureMode=1",
-    # set the following error of the companion axis out of the way
-    "Motor[L7].FatalFeLimit=9999999",
-    "Motor[L1].CaptureMode=0",
-    "PowerBrick[L2].Chan[L3].CaptCtrl=10",
-    "Motor[L1].JogSpeed={JogSpeed}",
-]
-
-pass_conds = [cond.replace("=", "==") for cond in cry_cmds]
 m3_init_checks_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
-    pass_conds=pass_conds,
-    cry_cmds=cry_cmds,
+    pass_conds=tls.verify_config_rdb_lmt,
+    cry_cmds=tls.config_rdb_lmt,
     celeb_cmds=None,
     L1=L1,
     L2=L2,
@@ -85,13 +71,14 @@ m3_init_checks_ag = ppra.WrascPmacGate(
 )
 # -------------------------------------------------------------------
 # 1 - settle at staring point
-pass_conds, cry_cmds = ppra.assert_pos_wf(3, f"#{colliding_xx}p - 100", 1)
-
+check_relative_pos, cmd_relative_pos = tls.assert_pos_wf(
+    L1, f"#{colliding_xx}p - 100", 1
+)
 m3_start_pos_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
-    pass_conds=pass_conds,
-    cry_cmds=cry_cmds,
+    pass_conds=check_relative_pos,
+    cry_cmds=cmd_relative_pos,
     celeb_cmds=[],
     L1=L1,
     L2=L2,
@@ -104,11 +91,12 @@ m3_start_pos_ag = ppra.WrascPmacGate(
 m3_on_lim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
-    cry_cmds=["#{L1}j-"],
+    cry_cmds=["#{L1}j{MoveToLimitDir}"],
     pass_conds=["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"],
     # also, log the previous capture values
     celeb_cmds=[],
     L1=L1,
+    MoveToLimitDir=MoveToLimitDir,
 )
 
 
@@ -116,6 +104,7 @@ def on_lim_aoa(ag_self: ra.Agent):
     if ra.timer() - ag_self.poll.ChangeTime < ag_self.dwell_on_limit:
         return ra.StateLogics.Armed, f"dwelling by {ag_self.dwell_on_limit}"
 
+    # this routine can also change some parameters based on the circumstances.
     ag_self.dwell_on_limit = ag_self.dwell_on_limit * (1 + ag_self.dwell_on_limit_rate)
     if ag_self.dwell_on_limit > ag_self.dwell_on_limit_max:
         ag_self.dwell_on_limit = ag_self.dwell_on_limit_max
@@ -128,40 +117,26 @@ m3_on_lim_ag.dwell_on_limit_rate = 0.1
 m3_on_lim_ag.dwell_on_limit_max = 3
 m3_on_lim_ag.act_on_armed = on_lim_aoa
 
+
 # -------------------------------------------------------------------
 # 3 - Arm Capture and slide off for capturing the falling edge
 m3_slide_off_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii,
-    cry_cmds=[
-        "Motor[L7].CapturePos=1",
-        "Motor[L1].JogSpeed={HomeVel}",
-        "#{L1}j:2000^{trigOffset}",
-        # companion axis is fooled to think it is jogging
-        "Motor[L7].JogSpeed=0.00001",
-        "#{L7}j:10^0",
-    ],
-    pass_conds=[
-        "Motor[L1].MinusLimit==0",
-        "Motor[L1].PlusLimit==0",
-        "Motor[L1].InPos>0",
-    ],
-    pass_logs=[
-        "Motor[L1].CapturedPos",
-        "#{L1}p",
-        "Motor[L1].JogSpeed",
-        "Motor[L7].CapturedPos",
-        "#{L7}p",
-        "Motor[L7].CapturePos",
-    ],
+    cry_cmds=tls.jog_capt_rbk_tl,
+    pass_conds=tls.check_off_limit_inpos_tl,
+    pass_logs=tls.log_capt_rbk_tl,
     # resetting the changes in this action
-    celeb_cmds=["Motor[L1].JogSpeed={JogSpeed}", "#{L7}j/",],
+    celeb_cmds=tls.reset_rbk_capt_tl,
+    # and the macro substitutes
     L1=L1,
     L2=L2,
+    L3=L3,
     L7=L7,
     JogSpeed=JogSpeed,
     trigOffset=trigOffset,
     HomeVel=HomeVel,
+    CaptureJogDir=CaptureJogDir,
 )
 
 m3_slide_off_ag.setup(csv_file_name=path.join("autest_out", "s03_slide_off_ag.csv"))

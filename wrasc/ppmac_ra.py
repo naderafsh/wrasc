@@ -21,36 +21,6 @@ These have no retry or timeout mechanism internally. Some specialised agents can
 macrostrs = ["{", "}"]
 
 
-def assert_pos_wf(xx: int, pos, tol):
-    """
-
-    retuns 
-    1 - assert condition for motor xx at resting at position pos+_tol
-    2 - default jog statement to move the motor there if not already there
-
-    """
-    if isinstance(pos, str) or isinstance(tol, str):
-        tol = str(tol)
-        pos = str(pos)
-        pos_hi = f"{pos} + {tol}"
-        pos_lo = f"{pos} - {tol}"
-        # target_pos = macrostrs[0] + pos + macrostrs[1]
-        target_pos = pos
-    else:
-        pos_hi = pos + tol
-        pos_lo = pos - tol
-        target_pos = pos
-    return (
-        [
-            f"#{xx}p < {pos_hi}",
-            f"#{xx}p > {pos_lo}",
-            f"Motor[{xx}].InPos==1",
-            f"Motor[{xx}].MinusLimit + Motor[{xx}].PlusLimit == 0",
-        ],
-        [f"#{xx}j={target_pos}"],
-    )
-
-
 def isPmacNumber(s: str):
 
     if s.startswith("$"):
@@ -98,7 +68,7 @@ def parse_vars(any_side: str):
     return any_side, all_vars
 
 
-def validate_cmds(cmds):
+def parse_cmds(cmds):
 
     if cmds is None:
         return None
@@ -135,7 +105,7 @@ def pars_conds(conds_list):
     if conds_list is None:
         return []
 
-    # make sure "verifies" is a list
+    # make sure "pass_conds_parsed" is a list
     if isinstance(conds_list, str):
         conds_list = [conds_list]
 
@@ -187,7 +157,7 @@ def expand_pmac_stats(stats, **vars):
             # this is probably a syntax issue,
             # e.g. something other than a variable is passed as a macro
             # e.g. {0.2} is passed
-            raise RuntimeError(f"syntax error in ppmac statement: {stat} ")
+            # raise RuntimeError(f"syntax error in ppmac statement: {stat} ")
 
             stats_out.append(stat)
 
@@ -204,13 +174,13 @@ def ppwr_poll_pr(ag_self: ra.Agent):
 def ppwr_poll_in(ag_self: ra.Agent):
 
     # TODO: it is tricky here as a continuous poll is not always desired?
-    if not ag_self.verifies or len(ag_self.verifies) < 1:
+    if not ag_self.pass_conds_parsed or len(ag_self.pass_conds_parsed) < 1:
         ag_self.poll.Var = True
         return ra.StateLogics.Valid, "no checks"
 
     # acquire left sides
 
-    for condition in ag_self.verifies:
+    for condition in ag_self.pass_conds_parsed:
         # take templates and variables from inside the
         # condisions and verify the statement
 
@@ -226,7 +196,7 @@ def ppwr_poll_in(ag_self: ra.Agent):
     # they will be saved to file via actions:
 
     vals = [ag_self.poll.Time]
-    for condition in ag_self.log_stats:
+    for condition in ag_self.pass_logs_parsed:
         # acquire log statements
         verify_text, statement = ag_self.check_cond(condition)
 
@@ -259,9 +229,9 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
         if ag_self.poll.is_on_hold():
             return ra.StateLogics.Done, f"Done."
         else:
-            if ag_self.celeb_cmds:
+            if ag_self.celeb_cmds_parsed:
                 resp = ag_self.ppmac.send_receive_raw(
-                    ag_self.eval_cmd(ag_self.celeb_cmds)
+                    ag_self.eval_cmd(ag_self.celeb_cmds_parsed)
                 )
             else:
                 resp = ""
@@ -295,16 +265,18 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
         if ag_self.poll.NoChangeCount > ag_self.cry_retries:
             return ra.StateLogics.Idle, f"{ag_self.cry_retries} retries exhausted"
 
-        if ag_self.cry_cmds:
-            resp = ag_self.ppmac.send_receive_raw(ag_self.eval_cmd(ag_self.cry_cmds))
+        if ag_self.cry_cmds_parsed:
+            resp = ag_self.ppmac.send_receive_raw(
+                ag_self.eval_cmd(ag_self.cry_cmds_parsed)
+            )
             return ra.StateLogics.Idle, "Fix action"
 
         return ra.StateLogics.Idle, "No action !!!"
 
 
 def ppwr_act_on_invalid(ag_self: ra.Agent):
-    if ag_self.fetch_cmds:
-        ag_self.ppmac.send_receive_raw(ag_self.eval_cmd(ag_self.fetch_cmds))
+    if ag_self.fetch_cmds_parsed:
+        ag_self.ppmac.send_receive_raw(ag_self.eval_cmd(ag_self.fetch_cmds_parsed))
     return ra.StateLogics.Idle, "reacted to invalid"
 
 
@@ -335,6 +307,19 @@ class Conditions(object):
 class WrascPmacGate(ra.Agent):
 
     ppmac = ...  # type : GpasciiClient
+
+    fetch_cmds = ...  # type : list
+    fetch_cmd_parsed = ...  # type : str
+    cry_cmds = ...  # type : list
+    cry_cmd_parsed = ...  # type : str
+    celeb_cmds = ...  # type : list
+    celeb_cmd_parsed = ...  # type : str
+
+    pass_cond = ...  # type : list
+    pass_cond_parsed = ...  # type : list
+
+    pass_logs = ...  # type : list
+    pass_logs_parsed = ...  # type : list
 
     def __init__(
         self,
@@ -375,7 +360,7 @@ class WrascPmacGate(ra.Agent):
                     )
                 sleep(0.1)
 
-        self.log_stats = []
+        self.pass_logs_parsed = []
         self.csv_file_name = None
         # if you are here, then we have an agent to intialise
 
@@ -409,18 +394,23 @@ class WrascPmacGate(ra.Agent):
         # every one of cmds and conds pass this point,
         # so its best to esxpand them here
 
-        if pass_conds:
-            self.verifies = pars_conds(expand_pmac_stats(pass_conds, **kwargs))
-        # log_stats need to be fetched with verifies, stored, and logged at celeb.
-        if pass_logs:
-            self.log_stats = pars_conds(expand_pmac_stats(pass_logs, **kwargs))
+        self.pass_conds = expand_pmac_stats(
+            pass_conds if pass_conds else self.pass_conds, **kwargs
+        )
+        self.pass_conds_parsed = pars_conds(self.pass_conds)
+
+        # pass_logs_parsed need to be fetched with pass_conds_parsed, stored, and logged at celeb.
+        self.pass_logs = expand_pmac_stats(
+            pass_logs if pass_logs else self.pass_logs, **kwargs
+        )
+        self.pass_logs_parsed = pars_conds(self.pass_logs)
 
         if csv_file_name:
             self.csv_file_name = csv_file_name
 
         # setup the headers, they get written when (and only if) the first set of readings are ready
-        if self.log_stats:
-            headers = ["Time"] + list(list(zip(*self.log_stats))[2])
+        if self.pass_logs_parsed:
+            headers = ["Time"] + list(list(zip(*self.pass_logs_parsed))[2])
             # remove and reshape special caharacters headers
 
             headers = [normalise_header(header) for header in headers]
@@ -450,17 +440,25 @@ class WrascPmacGate(ra.Agent):
                         n_copies = +1
 
                 open(self.csv_file_name, "w+")
-
         else:
             # self.log_vals = []
             self.csvcontent = None
 
-        if celeb_cmds:
-            self.celeb_cmds = validate_cmds(expand_pmac_stats(celeb_cmds, **kwargs))
-        if cry_cmds:
-            self.cry_cmds = validate_cmds(expand_pmac_stats(cry_cmds, **kwargs))
-        if fetch_cmds:
-            self.fetch_cmds = validate_cmds(expand_pmac_stats(fetch_cmds, **kwargs))
+        self.fetch_cmds = expand_pmac_stats(
+            fetch_cmds if fetch_cmds else self.fetch_cmds, **kwargs
+        )
+        self.fetch_cmds_parsed = parse_cmds(self.fetch_cmds)
+
+        self.cry_cmds = expand_pmac_stats(
+            cry_cmds if cry_cmds else self.cry_cmds, **kwargs
+        )
+        self.cry_cmds_parsed = parse_cmds(self.cry_cmds)
+
+        self.celeb_cmds = expand_pmac_stats(
+            celeb_cmds if celeb_cmds else self.celeb_cmds, **kwargs
+        )
+        self.celeb_cmds_parsed = parse_cmds(self.celeb_cmds)
+
         if cry_retries:
             self.cry_retries = cry_retries
 
