@@ -37,7 +37,7 @@ def dwell_aoa(ag_self: ra.Agent):
     return ra.StateLogics.Done, "user aoa done."
 
 
-_VERBOSE_ = 0
+_VERBOSE_ = 2
 wracs_period = 0.250
 
 
@@ -53,7 +53,7 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 m3_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m4_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
-mAll_start_pos_ag = ppra.WrascPmacGate(verbose=3, ppmac=test_gpascii,)
+mAll_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
 m3_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m4_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
@@ -61,7 +61,7 @@ m4_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m3_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m4_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
-collision_stopper_ag = ppra.WrascPmacGate(verbose=3, ppmac=test_gpascii,)
+collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
 # -------------------------------------------------------------------
 # this one monitors the two motors for collision.
@@ -76,7 +76,7 @@ collision_stopper_ag.setup(
         "#3p - #4p > {collision_clearance}",
         "Motor[3].DesVelZero + Motor[4].DesVelZero == 0",
     ],
-    collision_clearance=1000,
+    collision_clearance=1000000,
     celeb_cmds=["#3..4k"],
 )
 
@@ -117,7 +117,7 @@ m4_init_checks_ag.setup(
 )
 # -------------------------------------------------------------------
 # 1 - settle at staring point
-SettlePos = 77000
+SettlePos = 10000
 mAll_start_pos_ag.setup(
     pass_conds=tls.assert_pos_wf(3, SettlePos, 10)[0]
     + tls.assert_pos_wf(4, SettlePos, 10)[0],
@@ -222,7 +222,7 @@ m4_slide_off_ag.poll_pr = lambda ag_self: m4_on_lim_ag.is_done
 # now setup a sequencer
 quit_if_all_done_ag = ppra.WrascSequencer(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
-quit_if_all_done_ag.repeats = 10 - 1
+quit_if_all_done_ag.repeats = 5 - 1
 quit_if_all_done_ag.last_layer_dependency_ag = m4_slide_off_ag
 
 # ----------------------------------------------------------------------
@@ -230,11 +230,14 @@ quit_if_all_done_ag.last_layer_dependency_ag = m4_slide_off_ag
 # =====================================================================================
 # input('press a key or break...')
 # dm module called to compile and install agents
-agents_sorted_by_layer = ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01")
+# agents_sorted_by_layer =
 # input('press any key to start the process loop...')
 # dm module takes control of the process loop
 ppra.ra.process_loop(
-    agents_sorted_by_layer, 100000, cycle_period=wracs_period, debug=True
+    ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01"),
+    100000,
+    cycle_period=wracs_period,
+    debug=True,
 )
 
 test_gpascii.close

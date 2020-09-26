@@ -72,6 +72,7 @@ log_capt_rbk_tl = [
     "Motor[L1].HomePos",
     "Motor[L1].CapturedPos",
     "#{L1}p",
+    "Motor[L1].TriggerNotFound",
     "Motor[L1].JogSpeed",
     "full_current(L1)",
     # companion axis used for readback
@@ -79,6 +80,7 @@ log_capt_rbk_tl = [
     "Motor[L7].CapturedPos",
     "#{L7}p",
     "Motor[L7].CapturePos",
+    "Motor[L7].TriggerNotFound",
 ]
 
 reset_rbk_capt_tl = [

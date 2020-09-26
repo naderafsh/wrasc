@@ -183,7 +183,7 @@ def ppwr_poll_in(ag_self: ra.Agent):
             return ra.StateLogics.Invalid, "comms error"
 
         if eval(verify_text) == False:
-            return False, f"False: {statement} "
+            return False, f"Not passed: {statement} "
 
     # now that it is going to be True, calculate the logs.
     # they will be saved to file via actions:
@@ -235,6 +235,8 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
         # this will also trigger transition to Done state the next cycle.
         if not ag_self.ongoing:
             ag_self.poll.hold(for_cycles=-1, reset_var=False)
+            # TODO Remove this test code
+            ag_self.act.hold(for_cycles=1, reset_var=False)
 
         # now log a line to cvs if there is one
         if ag_self.csvcontent and ag_self.csv_file_name:
@@ -247,10 +249,10 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
         if ag_self.act_on_armed:
             return (
                 ra.StateLogics.Armed,
-                f"passing control to users act_on_arm: {resp}",
+                f"passing to external aoa: {resp}",
             )
 
-        return ra.StateLogics.Done, f"Hooray: {resp}"
+        return ra.StateLogics.Done, f"celeb: {resp}"
 
     elif ag_self.poll.Var == False:
 
@@ -259,19 +261,30 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
         # this is a way of managing reties:
         # once the agent gets armed, it will not be released until externally poked back?
 
-        if ag_self.poll.NoChangeCount > ag_self.cry_retries:
-            return ra.StateLogics.Idle, f"{ag_self.cry_retries} retries exhausted"
-
         if ag_self.cry_cmds_parsed:
+
+            if ag_self.cry_tries >= ag_self.cry_retries:
+                return (
+                    ra.StateLogics.Idle,
+                    f"retries exhausted {ag_self.cry_tries}/{ag_self.cry_retries}",
+                )
+
+            ag_self.cry_tries = ag_self.cry_tries + 1
             resp = ag_self.ppmac.send_receive_raw(
                 ag_self.eval_cmd(ag_self.cry_cmds_parsed)
             )
-            return ra.StateLogics.Idle, "Fix action"
+            return (
+                ra.StateLogics.Idle,
+                f"Fix action {ag_self.cry_tries}/{ag_self.cry_retries}",
+            )
 
-        return ra.StateLogics.Idle, "No action !!!"
+        return ra.StateLogics.Idle, "No action"
 
 
 def ppwr_act_on_invalid(ag_self: ra.Agent):
+
+    ag_self.cry_tries = 0
+
     if ag_self.fetch_cmds_parsed:
         ag_self.ppmac.send_receive_raw(ag_self.eval_cmd(ag_self.fetch_cmds_parsed))
     return ra.StateLogics.Idle, "reacted to invalid"
@@ -340,6 +353,7 @@ class WrascPmacGate(ra.Agent):
         self.pass_conds = []
         self.cry_cmds = []
         self.cry_retries = 1
+        self.cry_tries = 0
         self.celeb_cmds = []
         self.pass_logs = []
 
@@ -443,7 +457,7 @@ class WrascPmacGate(ra.Agent):
                     except FileExistsError:
                         # forget it... the file is already archived...
                         # TODO or you need to be too fussy and break the execution for this?
-                        n_copies = +1
+                        n_copies += 1
 
                 open(self.csv_file_name, "w+")
         else:
@@ -583,10 +597,11 @@ def arm_to_quit_aov(ag_self: ra.Agent):
                 continue
 
             ag.poll.force(None, immediate=False)
+            ag.act.force(None, immediate=True)
 
         ag_self.repeats -= 1
 
-        return ra.StateLogics.Valid, f"all ags reset...{ag_self.repeats} to go"
+        return ra.StateLogics.Valid, f"{ag_self.repeats + 1} to go"
 
 
 def quit_act_aoa(ag_self: ra.Agent):
