@@ -440,6 +440,95 @@ class MyObservable:
 
         return r, t
 
+    def check_var(self):
+        if self._hold_indefinitely:
+            self._hold_counter = 1
+
+        if self._force_indefinitely:
+            self._force_counter = 1
+
+        if not ((self._hold_counter < 1) and (self._hold_timer < timer())):
+            # TODO review: do we need persistent invalidation? probably NO
+            # changed it to reflect
+            # if it is holding, then it is not "just" changed.
+            # all the otrher counts may still stay frozen, but at least Changed shall be false
+            #
+
+            self.Changed = False
+
+            return_message = "on hold"
+            # recalc remaining invalidation time
+            self._hold_counter -= 1
+
+            self.last_message = return_message
+
+            return return_message
+
+        # if poll.forced, use poll.forced value
+        if self._force_counter > 0:
+            _v = self.ForcedVar
+            return_message = "forced"
+            self._force_counter -= 1
+
+            self.set_var(_v, return_message)
+
+            return return_message
+
+        # return blank to indicate not forced nor on hold
+        return ""
+
+    def set_var(self, _v, return_message):
+
+        self.last_message = return_message
+
+        # TODO improve change setting by defining inChange_threshold,
+        if _v is None:
+            self.Changed = False
+        else:
+            if self.Var is None:
+                if self.Last is None:
+                    # there has never been a valid value before but now its valid. This is a change
+                    self.Changed = True
+                else:
+                    # val1->None .. None->val2 is a change.
+                    self.Changed = not (_v == self.Last)
+                    if self.Changed:
+                        self.DiffTime = timer() - self.LastTime
+            else:
+                # inVar is valid
+                self.Changed = not (_v == self.Var)
+                if self.Changed:
+                    self.DiffTime = timer() - self.Time
+                    self.Last = self.Var
+                    self.LastTime = self.Time
+
+            if self.Changed:
+                self.NoChangeCount = 0
+                self.ChangeCount += 1
+                self.ChangeTime = timer()
+                try:
+                    # this may throw an exception depending on dmAgentType... put this last!
+                    if isinstance(self.Var, type(_v)):
+                        self.Diff = _v - self.Var
+                except TypeError:
+                    pass
+            else:
+                # when not on hold, a false Change counts.
+                self.NoChangeCount += 1
+                # two consecutive valid variables are equal: valid and unchanged
+                if self.NoChangeCount >= self.DebounceCycles:
+                    self.VarDebounced = self.Var
+                else:
+                    # change debounced
+                    self.VarDebounced = self.VarDebounced
+
+            self.IsStable = self.NoChangeCount > self.DebounceCycles
+
+        # Assign new variable: Time is the time of last update, weather it is changed or not or even None.
+
+        self.Time = timer()
+        self.Var = _v
+
 
 # DModel agent class
 class Agent(object):
@@ -479,8 +568,6 @@ class Agent(object):
         self.act_on_armed = None
 
         self.act_on = None
-
-        self.major_cycle = False
 
         self.unit = ""
         self.in_unit = ""
@@ -633,7 +720,11 @@ class Agent(object):
 
     @property
     def is_done(self):
-        return self.act.Var
+        # if action is Done
+        if self.act.Var:
+            return True
+        else:
+            return False
 
     def state(self):
 
@@ -681,151 +772,85 @@ class Agent(object):
 
         return self.in_state, self.out_state
 
-    def _in_proc(self, major_cycle=True):
+    def _in_proc(self):
 
         # DONE look at the list of valid refs and eval if your precedents are all valid. Otw post a message
         # if planned invalidation is passed
 
-        self.major_cycle = major_cycle
-
         _v = None
 
-        if self.poll._hold_indefinitely:
-            self.poll._hold_counter = 1
+        return_message = self.poll.check_var()
 
-        if self.poll._force_indefinitely:
-            self.poll._force_counter = 1
+        if return_message:
+            return self.state(), return_message
 
-        if (self.poll._hold_counter < 1) and (self.poll._hold_timer < timer()):
+        if self.poll_in:
+            try:
+                # pre poll function, which will NOT be interrogated for dependencies
 
-            # if poll.forced, use poll.forced value
-            if self.poll._force_counter > 0:
-                _v = self.poll.ForcedVar
-                return_message = "poll.forced"
-                if major_cycle:
-                    self.poll._force_counter -= 1
-            elif self.poll_in:
+                # now fuse the pre and poll:
+                # if poll is unknown, the it wins.
+                # if poll is known, the pre can represent the value
+                # by multiplication!
+                # i.e. if poll returns True, then pre determins the value
+                #
                 try:
-                    # pre poll function, which will NOT be interrogated for dependencies
-
-                    # now fuse the pre and poll:
-                    # id poll is unknown, the it wins.
-                    # if poll is known, the pre can represent the value
-                    # by multiplication!
-                    # i.e. if poll returns True, then pre determins the value
-                    #
-                    try:
-                        if self.poll_pr is not None:
-                            self.inhibited = not self.poll_pr(
-                                self
-                            )  # override to diabled
-                    except:
-                        # TODO fix this
-                        raise RuntimeError(
-                            f"Exception in poll_pr func of agent {self.name} "
-                        )
-
-                    if self.inhibited:
-                        _v, return_message = None, "inhibited"
-                    else:
-                        _v, return_message = self.poll_in(self)
-
-                except AttributeError:
-                    _v = None
-                    return_message = str(sys.exc_info()[0])
-                except TypeError:
-                    _v = None
-                    return_message = str(sys.exc_info()[0])
-                except KeyError:
-                    _v = None
-                    return_message = str(sys.exc_info()[0])
-            else:
-                _v = self.poll.Var
-                return_message = ""
-
-            if major_cycle:
-
-                # TODO improve change setting by defining inChange_threshold,
-                if _v is None:
-                    self.poll.Changed = False
-                else:
-                    if self.poll.Var is None:
-                        if self.poll.Last is None:
-                            # there has never been a valid value before but now its valid. This is a change
-                            self.poll.Changed = True
-                        else:
-                            # val1->None .. None->val2 is a change.
-                            self.poll.Changed = not (_v == self.poll.Last)
-                            if self.poll.Changed:
-                                self.poll.DiffTime = timer() - self.poll.LastTime
-                    else:
-                        # inVar is valid
-                        self.poll.Changed = not (_v == self.poll.Var)
-                        if self.poll.Changed:
-                            self.poll.DiffTime = timer() - self.poll.Time
-                            self.poll.Last = self.poll.Var
-                            self.poll.LastTime = self.poll.Time
-
-                    if self.poll.Changed:
-                        self.poll.NoChangeCount = 0
-                        self.poll.ChangeCount += 1
-                        self.poll.ChangeTime = timer()
-                        try:
-                            # this may throw an exception depending on dmAgentType... put this last!
-                            if isinstance(self.poll.Var, type(_v)):
-                                self.poll.Diff = _v - self.poll.Var
-                        except TypeError:
-                            pass
-                    else:
-                        # when not on hold, a false Change counts.
-                        self.poll.NoChangeCount += 1
-                        # two consecutive valid variables are equal: valid and unchanged
-                        if self.poll.NoChangeCount >= self.poll.DebounceCycles:
-                            self.poll.VarDebounced = self.poll.Var
-                        else:
-                            # change debounced
-                            self.poll.VarDebounced = self.poll.VarDebounced
-
-                    self.poll.IsStable = (
-                        self.poll.NoChangeCount > self.poll.DebounceCycles
+                    if self.poll_pr is not None:
+                        self.inhibited = not self.poll_pr(self)  # override to diabled
+                except:
+                    # TODO fix this
+                    raise RuntimeError(
+                        f"Exception in poll_pr func of agent {self.name} "
                     )
 
-            # Assign new variable: inTime is the time of last update, weather it is changed or not or even None.
-            self.poll.Time = timer()
-            self.poll.Var = _v
+                if self.inhibited:
+                    _v, return_message = None, "inhibited"
+                else:
+                    _v, return_message = self.poll_in(self)
 
+            except AttributeError:
+                _v = None
+                return_message = str(sys.exc_info()[0])
+            except TypeError:
+                _v = None
+                return_message = str(sys.exc_info()[0])
+            except KeyError:
+                _v = None
+                return_message = str(sys.exc_info()[0])
         else:
-            # TODO review: do we need persistent invalidation? probably NO
-            # changed it to reflect
-            # if it is holding, then it is not "just" changed.
-            # all the otrher counts may still stay frozen, but at least Changed shall be false
-            #
+            # not forced and no poll method, retain the existing var
+            _v = self.poll.Var
+            return_message = ""
 
-            self.poll.Changed = False
-
-            return_message = "on poll.hold..."
-            # if this is a major cycle, then recalc remaining invalidation time
-            if major_cycle:
-                self.poll._hold_counter -= 1
-
-        self.poll.last_message = return_message
+        self.poll.set_var(_v, return_message)
 
         return self.state(), return_message
 
-    def _out_proc(self, major_cycle=True):
+    def _out_proc(self):
         """
 
-
-        :param major_cycle:
         :return:
         
         """
+
+        # return_message = self.act.check_var()
+
+        # if return_message:
+        #     return self.state(), return_message
+
         _v = None
         return_message = ""
         if self.act._hold_indefinitely:
             self.act._hold_counter = 1
 
-        if (self.act._hold_counter < 1) and (self.act._hold_timer < timer()):
+        if not ((self.act._hold_counter < 1) and (self.act._hold_timer < timer())):
+            # TODO review: do we need persistant act.hold? probably NO
+            # changed it from None to outVar
+            _v = self.act.Var
+            # in case of holding on timer, decrementing the cycle counter is useless and harmless.
+            self.act._hold_counter -= 1
+            return_message = "on act.hold..."
+        else:
             # calculate the current state
             # DONE Major bug fixed:
             self.state()
@@ -841,36 +866,26 @@ class Agent(object):
                     _v = None
                     return_message = str(sys.exc_info()[0])
 
+        # TODO improve change setting by defining inChange_threshold
+        if self.act.Var is None:
+            self.act.Changed = _v is not None
+        elif _v is None:
+            self.act.Changed = self.act.Var is not None
         else:
-            # TODO review: do we need persistant act.hold? probably NO
-            # changed it from None to outVar
-            _v = self.act.Var
-            if major_cycle:
-                # in case of holding on timer, decrementing the cycle counter is useless and harmless.
-                self.act._hold_counter -= 1
-            return_message = "on act.hold..."
+            self.act.Changed = _v != self.act.Var
 
-        if major_cycle:
-            # TODO improve change setting by defining inChange_threshold
-            if self.act.Var is None:
-                self.act.Changed = _v is not None
-            elif _v is None:
-                self.act.Changed = self.act.Var is not None
-            else:
-                self.act.Changed = _v != self.act.Var
-
-            if self.act.Changed:
-                self.act.ChangeCount += 1
-                self.act.DiffTime = timer() - self.act.Time
-                self.act.Last = self.act.Var
-                self.act.LastTime = self.act.Time
-                self.act.ChangeTime = timer()
-                try:
-                    # this may through an exception depending on dmAgentType... put this last!
-                    if isinstance(self.act.Var, type(_v)):
-                        self.act.Diff = _v - self.act.Var
-                except TypeError:
-                    pass
+        if self.act.Changed:
+            self.act.ChangeCount += 1
+            self.act.DiffTime = timer() - self.act.Time
+            self.act.Last = self.act.Var
+            self.act.LastTime = self.act.Time
+            self.act.ChangeTime = timer()
+            try:
+                # this may through an exception depending on dmAgentType... put this last!
+                if isinstance(self.act.Var, type(_v)):
+                    self.act.Diff = _v - self.act.Var
+            except TypeError:
+                pass
 
         self.act.Var = _v
         self.act.last_message = return_message
@@ -885,48 +900,49 @@ class Agent(object):
 
         abbreviated_status = status[0][0] + status[1][0]
         in_var_str = "nil"
-        if self.verbose > 0:
-            if isinstance(self.poll.Var, dict):
-                in_var_str = "<"
-                for key in self.poll.Var:
-                    if self.poll.Var[key] is None:
-                        in_var_str += " {}:None ".format(key)
-                    elif isinstance(self.poll.Var[key], str):
-                        in_var_str += " {}:{} ".format(key, self.poll.Var[key])
-                    else:
-                        in_var_str += " {}:{:.3E} ".format(
-                            key, float(self.poll.Var[key])
-                        )
-                in_var_str += ">"
 
-            else:
-                in_var_str = "{}".format(self.poll.Var)
+        if self.verbose < 1:
+            return print_str, desc_str, in_var_str
 
-            _str = "<" + agent_var_debug_format.format(
-                agname,
-                abbreviated_status,
-                poll_message,
-                in_var_str,
-                "" if self.unit is None else self.unit,
-            )
+        if isinstance(self.poll.Var, dict):
+            in_var_str = "<"
+            for key in self.poll.Var:
+                if self.poll.Var[key] is None:
+                    in_var_str += " {}:None ".format(key)
+                elif isinstance(self.poll.Var[key], str):
+                    in_var_str += " {}:{} ".format(key, self.poll.Var[key])
+                else:
+                    in_var_str += " {}:{:.3E} ".format(key, float(self.poll.Var[key]))
+            in_var_str += ">"
 
-            desc_str = '{0}({2} {3}) "{1}" "{4}"'.format(
-                abbreviated_status,
-                poll_message,
-                in_var_str,
-                "" if self.unit is None else self.unit,
-                self.act.last_message,
-            )
+        else:
+            in_var_str = "{}".format(self.poll.Var)
 
-            if self.poll.Changed and self.verbose > 1:
-                desc_str = "**" + desc_str
-                print_str = "{} {}".format(agname, desc_str)
-            elif self.verbose > 2:
-                desc_str = "* " + desc_str
-                print_str = "{} {}".format(agname, desc_str)
-            else:
-                print_str = ""
-                desc_str = "  " + desc_str
+        _str = "<" + agent_var_debug_format.format(
+            agname,
+            abbreviated_status,
+            poll_message,
+            in_var_str,
+            "" if self.unit is None else self.unit,
+        )
+
+        desc_str = '{0}({2} {3}) "{1}" "{4}"'.format(
+            abbreviated_status,
+            poll_message,
+            in_var_str,
+            "" if self.unit is None else self.unit,
+            self.act.last_message,
+        )
+
+        if (self.poll.Changed or self.act.Changed) and self.verbose > 1:
+            desc_str = "**" + desc_str
+            print_str = "{} {}".format(agname, desc_str)
+        elif self.verbose > 2:
+            desc_str = "* " + desc_str
+            print_str = "{} {}".format(agname, desc_str)
+        else:
+            print_str = ""
+            desc_str = "  " + desc_str
 
         return print_str, desc_str, in_var_str
 
@@ -981,49 +997,36 @@ def prep1(ddict, cfg_motor_props=None, eprefix=None):
         ddict[_ag].update({"layer": ddict[_ag]["agent"].layer})
 
 
-def inference(sorted_ag_list, ag_states, max_minor_cycle=1, debug=False):
-    # cycle until states of the agents are converged
-    # this cycle is regarded as minor cycle.
-    # Agents are notified not to act on their waiting (invalidation or holding) by passing parameter minor_cycle
+def inference(sorted_ag_list, ag_states, debug=False):
+    # cycle only once, based on dependency order
 
-    logger = logger_debug if debug else logger_default
+    # logger = logger_debug if debug else logger_default
     polls_var_list = []
 
     ra_commands = set([])
-    minor_cycle = 0
-    prev_stats = {}
     _this_cycle_has_print = False
-    while (minor_cycle < max_minor_cycle) and (ag_states != prev_stats):
-        minor_cycle += 1
-        prev_stats = ag_states.copy()
-        ag_states[StateNames.Valid] = 0
-        ag_states[StateNames.Invalid] = 0
-        for agname in sorted_ag_list:
-            agent = sorted_ag_list[agname]["agent"]  # type Agent
-            # install a copy of agents list on each agent ONCE
-            if not agent.agent_list:
-                agent.agent_list = sorted_ag_list
-            # only the first minor cycle counts as a major cycle.
-            status, return_message = agent._in_proc(major_cycle=(minor_cycle == 1))
+    ag_states[StateNames.Valid] = 0
+    ag_states[StateNames.Invalid] = 0
+    for agname in sorted_ag_list:
+        agent = sorted_ag_list[agname]["agent"]  # type: Agent
+        # install a copy of agents list on each agent ONCE
+        if not agent.agent_list:
+            agent.agent_list = sorted_ag_list
+        # only the first minor cycle counts as a major cycle.
+        status, return_message = agent._in_proc()
+        (print_str, desc_str, in_var_str) = agent.annotate()
 
-            if str(return_message).startswith("RA_"):
-                # this is a RA command:
-                ra_commands.add(return_message)
+        if str(return_message).startswith("RA_"):
+            # this is a RA command:
+            ra_commands.add(return_message)
 
-            print_str, desc_str, in_var_str = agent.annotate()
+        if agent.verbose > 0:
+            polls_var_list.append(dict(name=agname, description=desc_str))
 
-            if agent.verbose > 0:
-                if len(print_str) and debug:
-                    logger.debug(print_str)
-                    # print(print_str)
-                    _this_cycle_has_print = True
+        ag_states[status[0]] += 1
+        sorted_ag_list[agname].update({"Status": status})
 
-                polls_var_list.append(dict(name=agname, description=desc_str))
-
-            ag_states[status[0]] += 1
-            sorted_ag_list[agname].update({"Status": status})
-
-            sorted_ag_list[agname].update({"var_str": in_var_str})
+        sorted_ag_list[agname].update({"var_str": in_var_str})
 
     return _this_cycle_has_print, ra_commands, polls_var_list
 
@@ -1032,14 +1035,14 @@ def action(sorted_ag_list, ag_states, debug=False):
 
     logger = logger_debug if debug else logger_default
 
-    minor_cycle = 1
     _this_cycle_has_print = False
 
     ra_commands = set([])
 
     for agname in sorted_ag_list:
         agent = sorted_ag_list[agname]["agent"]  # type: Agent
-        status, return_message = agent._out_proc(major_cycle=(minor_cycle == 1))
+        status, return_message = agent._out_proc()
+        (print_str, desc_str, in_var_str) = agent.annotate()
 
         if str(return_message).startswith("RA_"):
             # this is a RA command:
@@ -1047,6 +1050,11 @@ def action(sorted_ag_list, ag_states, debug=False):
 
         ag_states[status[1]] += 1
         sorted_ag_list[agname].update({"Status": status})
+
+        if len(print_str):
+            if debug:
+                logger.debug(print_str)
+                _this_cycle_has_print = True
 
     return _this_cycle_has_print, ra_commands
 

@@ -525,6 +525,14 @@ class WrascPmacGate(ra.Agent):
 
         return l_template, statement
 
+    @property
+    def is_done(self):
+
+        if self.ongoing or self.act.Var:
+            return True
+        else:
+            return False
+
 
 # -------------------------------------------------------------------
 def done_condition_poi(ag_self: ra.Agent):
@@ -534,7 +542,7 @@ def done_condition_poi(ag_self: ra.Agent):
     # this agent remains invalid until the process is all done
     # and then uses
 
-    all_stages_passed = ag_self.last_layer_dependency_ag.poll.Var
+    all_stages_passed = ag_self.last_layer_dependency_ag.is_done  # poll.Var
 
     if not all_stages_passed:
         return None, "last stage not passed..."
@@ -547,7 +555,7 @@ def done_condition_poi(ag_self: ra.Agent):
         if ag.layer >= ag_self.layer:
             continue
 
-        all_stages_passed = all_stages_passed and ag.poll.Var
+        all_stages_passed = all_stages_passed and ag.is_done  # ag.poll.Var
 
     if not all_stages_passed:
         return None, "prev stages not passed..."
