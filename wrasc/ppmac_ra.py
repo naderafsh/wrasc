@@ -164,13 +164,6 @@ def expand_pmac_stats(stats, **vars):
     return stats_out
 
 
-def ppwr_poll_pr(ag_self: ra.Agent):
-    """ 
-    these are "steged agents" meaning theyt are being inhibited by stage progress
-    
-    """
-
-
 def ppwr_poll_in(ag_self: ra.Agent):
 
     # TODO: it is tricky here as a continuous poll is not always desired?
@@ -225,35 +218,39 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
     # Arm for action if poll is changed to False or True
     if ag_self.poll.Var == True:
 
-        # if already celebrated
+        # if already put on hold
         if ag_self.poll.is_on_hold():
             return ra.StateLogics.Done, f"Done."
-        else:
-            if ag_self.celeb_cmds_parsed:
-                resp = ag_self.ppmac.send_receive_raw(
-                    ag_self.eval_cmd(ag_self.celeb_cmds_parsed)
-                )
-            else:
-                resp = ""
 
-            # stop checking the condition. Stage is now passed.
+        # do celeb commands if they exist
+        if ag_self.celeb_cmds_parsed:
+            resp = ag_self.ppmac.send_receive_raw(
+                ag_self.eval_cmd(ag_self.celeb_cmds_parsed)
+            )
+        else:
+            resp = ""
+
+        # if this is a staged-pass then
+        # stop checking the condition. Stage is now passed.
+        # this will also trigger transition to Done state the next cycle.
+        if not ag_self.ongoing:
             ag_self.poll.hold(for_cycles=-1, reset_var=False)
 
-            # now log a line to cvs if there is one
-            if ag_self.csvcontent and ag_self.csv_file_name:
+        # now log a line to cvs if there is one
+        if ag_self.csvcontent and ag_self.csv_file_name:
 
-                with open(ag_self.csv_file_name, "w+") as file:
-                    file.write(ag_self.csvcontent)
-                ag_self.cvscontent = None
+            with open(ag_self.csv_file_name, "w+") as file:
+                file.write(ag_self.csvcontent)
+            ag_self.cvscontent = None
 
-            # arm if an arm action is defined (by user). Otherwise Done
-            if ag_self.act_on_armed:
-                return (
-                    ra.StateLogics.Armed,
-                    f"passing control to users act_on_arm: {resp}",
-                )
+        # arm if an arm action is defined (by user). Otherwise Done
+        if ag_self.act_on_armed:
+            return (
+                ra.StateLogics.Armed,
+                f"passing control to users act_on_arm: {resp}",
+            )
 
-            return ra.StateLogics.Done, f"Hooray: {resp}"
+        return ra.StateLogics.Done, f"Hooray: {resp}"
 
     elif ag_self.poll.Var == False:
 
@@ -322,6 +319,8 @@ class WrascPmacGate(ra.Agent):
     pass_logs = ...  # type : list
     pass_logs_parsed = ...  # type : list
 
+    ongoing = ...  # type : bool
+
     def __init__(
         self,
         ppmac: GpasciiClient = None,
@@ -334,6 +333,8 @@ class WrascPmacGate(ra.Agent):
         csv_file_name=None,
         **kwargs,
     ):
+
+        self.ongoing = False
 
         self.fetch_cmds = []
         self.pass_conds = []
@@ -389,8 +390,12 @@ class WrascPmacGate(ra.Agent):
         celeb_cmds=None,
         pass_logs=None,
         csv_file_name=None,
+        ongoing=None,
         **kwargs,
     ):
+
+        if ongoing:
+            self.ongoing = ongoing
 
         # every one of cmds and conds pass this point,
         # so its best to esxpand them here

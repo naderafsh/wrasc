@@ -9,7 +9,18 @@ import examples.ppmac_code_templates as tls
 """ This script is using wrasc ppmac_ra. 
 The module provides predefined warsc Agents which are customised to control a sequence 
 in a ppmac by sending and checking ppmac native commands.
-Each Agent has a Pass Condition. The Agents then can e forced to an "anchored sequence"
+
+Fundamental concept is that the ppmac internal state is NOT duplicated nor mapped at python.
+The agents interact with the ppmac controller all the time to check the actual ppmac values, 
+as the only copy of the machine state.
+The agents share some "parameters" in python variable space, and may publish logs and state 
+information to epics but don't rely on these for conditions and transitions.
+
+As a result, this model heavily relies on fast ppmac communication and 
+also wrasc poll cycle shall be fast.
+
+Each Agent has a Pass Condition which checks everycycle, using refreshed ppmac variables. 
+The Agents then can e forced to an "anchored sequence"
 
 The aoa method of the Agent can be used to implement additional functions which execute after pass condition is met.
 
@@ -26,7 +37,7 @@ def dwell_aoa(ag_self: ra.Agent):
     return ra.StateLogics.Done, "user aoa done."
 
 
-_VERBOSE_ = 3
+_VERBOSE_ = 0
 wracs_period = 0.250
 
 
@@ -42,7 +53,7 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 m3_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m4_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
-mAll_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+mAll_start_pos_ag = ppra.WrascPmacGate(verbose=3, ppmac=test_gpascii,)
 
 m3_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m4_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
@@ -50,6 +61,37 @@ m4_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m3_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m4_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
+collision_stopper_ag = ppra.WrascPmacGate(verbose=3, ppmac=test_gpascii,)
+
+# -------------------------------------------------------------------
+# this one monitors the two motors for collision.
+# stops both motors when collision zone condition is met.
+# celeb cpommands may kill or stop the engaged motors, or
+# may disable a coordinate system altogether.
+# this shall not go to Done. After pass, it shall continue checking.
+
+collision_stopper_ag.setup(
+    ongoing=True,
+    pass_conds=[
+        "#3p - #4p > {collision_clearance}",
+        "Motor[3].DesVelZero + Motor[4].DesVelZero == 0",
+    ],
+    collision_clearance=1000,
+    celeb_cmds=["#3..4k"],
+)
+
+
+def kill_aoa(ag_self: ra.Agent):
+    """
+    This aoa checks for collission zone condition. 
+    celeb commands are
+    This is an ongoing check, therefore never gets Done.
+
+    """
+    return ra.StateLogics.Idle, "back to idle"
+
+
+collision_stopper_ag.act_on_armed = kill_aoa
 
 # -------------------------------------------------------------------
 # 0 - check configuration
