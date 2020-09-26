@@ -68,10 +68,14 @@ check_off_limit_inpos_tl = [
     "Motor[L1].InPos>0",
 ]
 log_capt_rbk_tl = [
+    # main axis
+    "Motor[L1].HomePos",
     "Motor[L1].CapturedPos",
     "#{L1}p",
     "Motor[L1].JogSpeed",
     "full_current(L1)",
+    # companion axis used for readback
+    "Motor[L7].HomePos",
     "Motor[L7].CapturedPos",
     "#{L7}p",
     "Motor[L7].CapturePos",

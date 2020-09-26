@@ -631,6 +631,10 @@ class Agent(object):
                 )  # , callback=handle_update)
                 self.pvs_by_name_PVs.update({_pvf: _pvfPV})
 
+    @property
+    def is_done(self):
+        return self.act.Var
+
     def state(self):
 
         # DONE change the state notation from text to enum

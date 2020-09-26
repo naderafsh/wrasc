@@ -26,7 +26,7 @@ def dwell_aoa(ag_self: ra.Agent):
     return ra.StateLogics.Done, "user aoa done."
 
 
-_VERBOSE_ = 2
+_VERBOSE_ = 3
 wracs_period = 0.250
 
 
@@ -75,9 +75,11 @@ m4_init_checks_ag.setup(
 )
 # -------------------------------------------------------------------
 # 1 - settle at staring point
+SettlePos = 77000
 mAll_start_pos_ag.setup(
-    pass_conds=tls.assert_pos_wf(3, 6400, 10)[0] + tls.assert_pos_wf(4, 6400, 10)[0],
-    cry_cmds=["#3..4j=6400"],
+    pass_conds=tls.assert_pos_wf(3, SettlePos, 10)[0]
+    + tls.assert_pos_wf(4, SettlePos, 10)[0],
+    cry_cmds=[f"#3..4j={SettlePos}"],
     celeb_cmds=[],
 )
 
@@ -160,23 +162,25 @@ m3_init_checks_ag.poll_pr = lambda ag_self: True
 m4_init_checks_ag.poll_pr = lambda ag_self: True
 
 mAll_start_pos_ag.poll_pr = (
-    lambda ag_self: m3_init_checks_ag.act.Var and m4_init_checks_ag.act.Var
+    lambda ag_self: m3_init_checks_ag.act.Var and m4_init_checks_ag.is_done
 )
 
-m3_on_lim_ag.poll_pr = lambda ag_self: mAll_start_pos_ag.act.Var
+m3_on_lim_ag.poll_pr = lambda ag_self: mAll_start_pos_ag.is_done
 
-m3_slide_off_ag.poll_pr = lambda ag_self: m3_on_lim_ag.act.Var
+m3_slide_off_ag.poll_pr = lambda ag_self: m3_on_lim_ag.is_done
 
-m4_on_lim_ag.poll_pr = lambda ag_self: m3_slide_off_ag.act.Var
+m4_on_lim_ag.poll_pr = (
+    lambda ag_self: mAll_start_pos_ag.is_done
+)  # m3_slide_off_ag.is_done
 
-m4_slide_off_ag.poll_pr = lambda ag_self: m4_on_lim_ag.act.Var
+m4_slide_off_ag.poll_pr = lambda ag_self: m4_on_lim_ag.is_done
 
 # -------------------------------------------------------------------
 
 # now setup a sequencer
 quit_if_all_done_ag = ppra.WrascSequencer(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
-quit_if_all_done_ag.repeats = 30 - 1
+quit_if_all_done_ag.repeats = 10 - 1
 quit_if_all_done_ag.last_layer_dependency_ag = m4_slide_off_ag
 
 # ----------------------------------------------------------------------

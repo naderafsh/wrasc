@@ -282,13 +282,14 @@ def ppwr_act_on_invalid(ag_self: ra.Agent):
 
 def normalise_header(_header):
 
-    _header = re.sub(r"[[\]]", "_", _header)
-    _header = re.sub(r"(?<=#\d)(p)", "_Pos", _header)
-    _header = re.sub(r"(?<=#\d\d)(p)", "_Pos", _header)
-    _header = re.sub(r"(#)(?=\d+)", "Axis_", _header)
-    _header = re.sub(r"(#)(?=\d\d)", "Axis_", _header)
-
-    _header = re.sub(r"[\.]", "", _header)
+    _header = re.sub(r"[\.]", "_", _header)
+    _header = re.sub(r"[[\]]", "", _header)
+    _header = re.sub(r"[(\)]", "", _header)
+    _header = re.sub(r"Motor", "M", _header)
+    _header = re.sub(r"(?<=#\d)(p)", "_HashPos", _header)
+    _header = re.sub(r"(?<=#\d\d)(p)", "_HashPos", _header)
+    _header = re.sub(r"(#)(?=\d+)", "A", _header)
+    _header = re.sub(r"(#)(?=\d\d)", "A", _header)
 
     return _header
 
