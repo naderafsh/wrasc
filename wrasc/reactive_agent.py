@@ -1094,12 +1094,14 @@ def compile_dependencies(_agents_list, script_globals):
             # excude what comes before lambda !!
             source_code = re.sub(r".*lambda\s+ag_self\s*:", "", source_code)
 
-            ag_rx = r"[\w.]+_ag"
+            # ag_rx = r"[\w.]+_ag"
             # look for the push dependencies
             for push_method_name in push_method_names + [""]:
                 ag_rx = r"[\w.]+_ag"
                 if len(push_method_name) > 0:
                     ag_rx = ag_rx + "(?=." + push_method_name + r"\()"
+                else:
+                    ag_rx = ag_rx + "(?=\W)"
 
                 ag_rx = "(" + ag_rx + ")"
                 dum = re.findall(ag_rx, source_code)
