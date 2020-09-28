@@ -23,7 +23,7 @@ def assert_pos_wf(xx: int, target_pos, tol):
             f"Motor[{xx}].InPos==1",
             f"Motor[{xx}].MinusLimit + Motor[{xx}].PlusLimit == 0",
         ],
-        [f"#{xx}j={target_pos}"],
+        [f"#{xx}jog=={target_pos}"],
     )
 
 
@@ -72,14 +72,15 @@ log_capt_rbk_tl = [
     "Motor[L1].HomePos",
     "Motor[L1].CapturedPos",
     "#{L1}p",
-    "Motor[L1].TriggerNotFound",
-    "Motor[L1].JogSpeed",
-    "full_current(L1)",
     # companion axis used for readback
     "Motor[L7].HomePos",
     "Motor[L7].CapturedPos",
     "#{L7}p",
+    # test condition parameter
+    "Motor[L1].JogSpeed",
+    "full_current(L1)",
     "Motor[L7].CapturePos",
+    "Motor[L1].TriggerNotFound",
     "Motor[L7].TriggerNotFound",
 ]
 

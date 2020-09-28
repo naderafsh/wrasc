@@ -40,6 +40,12 @@ def dwell_aoa(ag_self: ra.Agent):
 _VERBOSE_ = 2
 wracs_period = 0.250
 
+# specific test data
+collision_clearance = 250
+motors = [ppra.axis(3), ppra.axis(4)]
+
+motors[0].JogSpeed = 3.2
+motors[1].JogSpeed = 3.2
 
 # test code
 # Linux:  export PPMAC_TEST_IP="10.23.92.220"
@@ -53,7 +59,9 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 m3_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m4_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
-mAll_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+m3_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+m4_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+
 
 m3_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m4_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
@@ -70,67 +78,79 @@ collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,
 # may disable a coordinate system altogether.
 # this shall not go to Done. After pass, it shall continue checking.
 
+# -------------------------------------------------------------------
+
 collision_stopper_ag.setup(
     ongoing=True,
     pass_conds=[
-        "#3p - #4p > {collision_clearance}",
-        "Motor[3].DesVelZero + Motor[4].DesVelZero == 0",
+        # clearance is low
+        f"#{motors[0].motor_n}p > #{motors[1].motor_n}p + {collision_clearance}",
+        # and it is decreasing
+        f"Motor[{motors[0].motor_n}].ActVel - Motor[{motors[1].motor_n}].ActVel > 0",
     ],
-    collision_clearance=1000000,
-    celeb_cmds=["#3..4k"],
+    celeb_cmds=[f"#{motors[0].motor_n},{motors[1].motor_n}kill"],
 )
 
 
-def kill_aoa(ag_self: ra.Agent):
+def reset_after_kill(ag_self: ra.Agent):
     """
     This aoa checks for collission zone condition. 
     celeb commands are
     This is an ongoing check, therefore never gets Done.
 
     """
+
+    print("KILLLED TO PREVENT COLLISION")
+
     return ra.StateLogics.Idle, "back to idle"
 
 
-collision_stopper_ag.act_on_armed = kill_aoa
+collision_stopper_ag.act_on_armed = reset_after_kill
 
 # -------------------------------------------------------------------
 # 0 - check configuration
+
+# this sets LVars into locals...
+locals().update()
+
 m3_init_checks_ag.setup(
     pass_conds=tls.verify_config_rdb_lmt,
     cry_cmds=tls.config_rdb_lmt,
-    L1=3,
-    L2=0,
-    L3=2,
-    L7=11,
-    JogSpeed=3.2,
+    **motors[0].LVars(),
+    JogSpeed=motors[0].JogSpeed,
 )
 # -------------------------------------------------------------------
 # 0 - check configuration
 m4_init_checks_ag.setup(
     pass_conds=tls.verify_config_rdb_lmt,
     cry_cmds=tls.config_rdb_lmt,
-    L1=4,
-    L2=0,
-    L3=3,
-    L7=12,
-    JogSpeed=3.2,
+    **motors[1].LVars(),
+    JogSpeed=motors[1].JogSpeed,
 )
 # -------------------------------------------------------------------
 # 1 - settle at staring point
 SettlePos = 10000
-mAll_start_pos_ag.setup(
-    pass_conds=tls.assert_pos_wf(3, SettlePos, 10)[0]
-    + tls.assert_pos_wf(4, SettlePos, 10)[0],
-    cry_cmds=[f"#3..4j={SettlePos}"],
+m3_start_pos_ag.setup(
+    pass_conds=tls.assert_pos_wf(motors[0].motor_n, SettlePos, 10)[0],
+    cry_cmds=[f"#{motors[0].motor_n}jog=={SettlePos}"],
+    celeb_cmds=[],
+)
+
+# -------------------------------------------------------------------
+# 1 - settle at staring point
+SettlePos = 10000
+m4_start_pos_ag.setup(
+    pass_conds=tls.assert_pos_wf(motors[1].motor_n, SettlePos, 10)[0],
+    cry_cmds=[f"#{motors[1].motor_n}jog=={SettlePos}"],
     celeb_cmds=[],
 )
 
 # -------------------------------------------------------------------
 # 2 - Move onto the minus limit and wait to stabilise
 m3_on_lim_ag.setup(
-    cry_cmds=["#{L1}j{MoveToLimitDir}"],
+    cry_cmds=["#{L1}jog{MoveToLimitDir}"],
     pass_conds=["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"],
-    L1=3,
+    L1=motors[0].motor_n,
     MoveToLimitDir="-",
 )
 
@@ -140,9 +160,9 @@ m3_on_lim_ag.act_on_armed = dwell_aoa
 # -------------------------------------------------------------------
 # 2 - Move onto the minus limit and wait to stabilise
 m4_on_lim_ag.setup(
-    cry_cmds=["#{L1}j{MoveToLimitDir}"],
+    cry_cmds=["#{L1}jog{MoveToLimitDir}"],
     pass_conds=["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"],
-    L1=4,
+    L1=motors[1].motor_n,
     MoveToLimitDir="-",
 )
 
@@ -159,11 +179,8 @@ m3_slide_off_ag.setup(
     # resetting the changes in this action
     celeb_cmds=tls.reset_rbk_capt_tl + ["#{L1}hmz"],
     # and the macro substitutes
-    L1=3,
-    L2=0,
-    L3=2,
-    L7=11,
-    JogSpeed=3.2,
+    **motors[0].LVars(),
+    JogSpeed=motors[0].JogSpeed,
     trigOffset=100,
     HomeVel=1.28,
     CaptureJogDir="+",
@@ -178,14 +195,12 @@ m4_slide_off_ag.setup(
     cry_cmds=tls.jog_capt_rbk_tl,
     pass_conds=tls.check_off_limit_inpos_tl,
     pass_logs=tls.log_capt_rbk_tl,
-    # resetting the changes in this action
+    # resetting the changes in this action,
+    # and we add a home zero to the template
     celeb_cmds=tls.reset_rbk_capt_tl + ["#{L1}hmz"],
     # and the macro substitutes
-    L1=4,
-    L2=0,
-    L3=3,
-    L7=12,
-    JogSpeed=3.2,
+    **motors[1].LVars(),
+    JogSpeed=motors[1].JogSpeed,
     trigOffset=100,
     HomeVel=1.28,
     CaptureJogDir="+",
@@ -199,33 +214,36 @@ m4_slide_off_ag.act_on_armed = dwell_aoa
 
 
 # setup the sequence default dependency (can be done automaticatlly)
-
-m3_init_checks_ag.poll_pr = lambda ag_self: True
-m4_init_checks_ag.poll_pr = lambda ag_self: True
-
-mAll_start_pos_ag.poll_pr = (
+m4_start_pos_ag.poll_pr = (
     lambda ag_self: m3_init_checks_ag.act.Var and m4_init_checks_ag.is_done
 )
 
-m3_on_lim_ag.poll_pr = lambda ag_self: mAll_start_pos_ag.is_done
+m3_start_pos_ag.poll_pr = lambda ag_self: m4_start_pos_ag.is_done
+
+m3_on_lim_ag.poll_pr = lambda ag_self: m3_start_pos_ag.is_done
+
+m4_on_lim_ag.poll_pr = lambda ag_self: m3_on_lim_ag.is_done
 
 m3_slide_off_ag.poll_pr = lambda ag_self: m3_on_lim_ag.is_done
-
-m4_on_lim_ag.poll_pr = (
-    lambda ag_self: mAll_start_pos_ag.is_done
-)  # m3_slide_off_ag.is_done
-
 m4_slide_off_ag.poll_pr = lambda ag_self: m4_on_lim_ag.is_done
 
 # -------------------------------------------------------------------
 
 # now setup a sequencer
-quit_if_all_done_ag = ppra.WrascSequencer(verbose=_VERBOSE_)
+inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
-quit_if_all_done_ag.repeats = 5 - 1
-quit_if_all_done_ag.last_layer_dependency_ag = m4_slide_off_ag
+inner_loop_ag.repeats = 2 - 1
+inner_loop_ag.all_done_ag = m4_slide_off_ag
+inner_loop_ag.reset_these_ags = [m3_start_pos_ag, m3_on_lim_ag, m3_slide_off_ag]
+inner_loop_ag.reset_these_ags += [m4_start_pos_ag, m4_on_lim_ag, m4_slide_off_ag]
 
 # ----------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+
+
+# ----------------------------------------------------------------------
+
 
 # =====================================================================================
 # input('press a key or break...')

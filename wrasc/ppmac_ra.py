@@ -83,10 +83,12 @@ def parse_cmds(cmds):
     cmds_out = []
     for cmd in cmds:
         # separate right and left side
+        # need to add all possible online comands here too: "^:*" ?
         cmd_split = cmd.split("=")
         cmd_left = cmd_split[0]
         if len(cmd_split) > 1:
-            cmd_right = cmd_split[1]
+            # in case of jog==45 , right side would be
+            cmd_right = cmd_split[-1]
             if (not isPmacNumber(cmd_right)) and any(i in cmd_right for i in "+-*/^"):
                 # right side is ILLEGAL as a ppmac online command. Mark it as a macro for late evaluation
                 cmd_right = macrostrs[0] + cmd_right + macrostrs[1]
@@ -183,7 +185,8 @@ def ppwr_poll_in(ag_self: ra.Agent):
             return ra.StateLogics.Invalid, "comms error"
 
         if eval(verify_text) == False:
-            return False, f"Not passed: {statement} "
+            # no need to check the rest of the conditions
+            return False, f"No Pass: {statement} "
 
     # now that it is going to be True, calculate the logs.
     # they will be saved to file via actions:
@@ -556,13 +559,13 @@ def done_condition_poi(ag_self: ra.Agent):
     # this agent remains invalid until the process is all done
     # and then uses
 
-    all_stages_passed = ag_self.last_layer_dependency_ag.is_done  # poll.Var
+    all_stages_passed = ag_self.all_done_ag.is_done  # poll.Var
 
     if not all_stages_passed:
         return None, "last stage not passed..."
 
     for agname in ag_self.agent_list:
-        ag = ag_self.agent_list[agname]["agent"]
+        ag = ag_self.agent_list[agname]["agent"]  # type : ra.Agent
         assert isinstance(ag, ra.Agent)
 
         # only reset ags which are below this control agent
@@ -578,23 +581,21 @@ def done_condition_poi(ag_self: ra.Agent):
     if ag_self.repeats > 0:
         return False, f"Resetting the loop"
     else:
-        return True, "Quitting..."
+        return True, "loop exhausted..."
 
 
 def arm_to_quit_aov(ag_self: ra.Agent):
     if ag_self.poll.Var == True:
         # inform and log, confirm with other agents...
-        return ra.StateLogics.Armed, "quitting..."
+        return ra.StateLogics.Armed, "out."
     elif ag_self.poll.Var == False:
         # action: invalidate all agents in this subs-stage,
         # so the cycle restart
-        for agname in ag_self.agent_list:
-            ag = ag_self.agent_list[agname]["agent"]
+        for ag in ag_self.reset_these_ags:
+
             assert isinstance(ag, ra.Agent)
 
             # only reset ags which are below this control agent
-            if ag.layer >= ag_self.layer:
-                continue
 
             ag.poll.force(None, immediate=False)
             ag.act.force(None, immediate=True)
@@ -606,13 +607,19 @@ def arm_to_quit_aov(ag_self: ra.Agent):
 
 def quit_act_aoa(ag_self: ra.Agent):
 
+    if not ag_self.quit_if_done:
+        ag_self.repeats = 30
+        ag_self.poll.force(None, immediate=False)
+        ag_self.act.force(None, immediate=True)
+        return ra.StateLogics.Done, "RA_WHATEVER"
+
     if ag_self.poll.Var:
         return ra.StateLogics.Done, "RA_QUIT"
     else:
         return ra.StateLogics.Idle, "RA_WHATEVER"
 
 
-class WrascSequencer(ra.Agent):
+class WrascRepeatUntil(ra.Agent):
     def __init__(
         self,
         poll_in=done_condition_poi,
@@ -629,6 +636,44 @@ class WrascSequencer(ra.Agent):
         )
 
         self.dmAgentType = "sequencer_wrasc"
+
+        self.all_done_ag = None
+        self.reset_these_ags = []
+        self.quit_if_done = True
+
+
+default_asic = lambda motor: (motor - 1) // 4
+default_chan = lambda motor: (motor - 1) % 4
+default_companion = lambda motor: motor + 8
+
+
+class axis:
+    def __init__(self, amp_number, **kwargs):
+        super().__init__()
+
+        self.motor_n = amp_number
+        self.asic_n = default_asic(self.motor_n)
+        self.chan_n = default_chan(self.motor_n)
+        self.companion_n = default_companion(self.motor_n)
+
+        self.setup(**kwargs)
+
+    def setup(self, JogSpeed=None):
+
+        if JogSpeed:
+            self.JogSpeed = JogSpeed
+
+    def LVars(self):
+
+        return {
+            "L1": self.motor_n,
+            "L2": self.asic_n,
+            "L3": self.chan_n,
+            "L7": self.companion_n,
+        }
+
+    def expand_stats(self, stats):
+        return expand_pmac_stats(stats, **self.LVars())
 
 
 class PpmacMotorShell(object):

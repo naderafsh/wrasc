@@ -1,4 +1,4 @@
-from wrasc import reactive_target_posnt as ra
+from wrasc import reactive_agent as ra
 from wrasc import ppmac_ra as ppra
 from wrasc import gpcom_wrap
 from os import environ, path
@@ -173,7 +173,7 @@ m3_slide_off_ag.poll_pr = lambda ag_self: m3_on_lim_ag.act.Var
 # -------------------------------------------------------------------
 
 # now setup a sequencer
-quit_if_all_done_ag = ppra.WrascSequencer(verbose=_VERBOSE_)
+quit_if_all_done_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
 quit_if_all_done_ag.repeats = n_repeats
 quit_if_all_done_ag.last_layer_dependency_ag = m3_slide_off_ag
 
