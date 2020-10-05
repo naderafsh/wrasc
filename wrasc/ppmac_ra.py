@@ -20,6 +20,8 @@ These have no retry or timeout mechanism internally. Some specialised agents can
 
 macrostrs = ["{", "}"]
 
+ppmac_func_dict = {"EXP2": "2**"}
+
 
 def isPmacNumber(s: str):
 
@@ -42,7 +44,19 @@ def isPmacNumber(s: str):
         )
 
 
-def parse_vars(any_side: str):
+def isPmacPointer(s: str):
+    return (len(s) > 3 and s.lower()[-2:] == ".a") or (s.lower() == "sys.pushm")
+
+
+def isPmacFunction(s: str):
+
+    if s in ppmac_func_dict:
+        return ppmac_func_dict[s]
+
+    return False
+
+
+def parse_vars(stat: str):
 
     # parse right or left soides of equation
     # to parametrised temlate and list of vars
@@ -56,16 +70,26 @@ def parse_vars(any_side: str):
 
     all_vars = []
     # any_side: no change if it is a ppmacnumber, or an address
-    if not (isPmacNumber(any_side) or any_side.endswith(".a")):
-        # there is at least a variable on the right,
-        # which needs to be evaluated.
-        for v in re.split(r"[\+\-\*\/=><! ]", any_side):
-            if v and not isPmacNumber(v):
-                all_vars.append(v)
-                vars_index = len(all_vars) - 1
-                any_side = any_side.replace(v, f"_var_{vars_index}")
 
-    return any_side, all_vars
+    for v in re.split(r"[\+\-\*\/=><! \(\)]", stat):
+        if v and not isPmacNumber(v):
+
+            if isPmacPointer(v):  # this is a pointer, treat this as quoted text
+                stat = stat.replace(v, f"'{v}'")
+                continue
+
+            pyfunc = isPmacFunction(v)
+            if pyfunc:  # this is a function, replace with python equivalent
+                stat = stat.replace(v, pyfunc)
+                continue
+
+            all_vars.append(v)
+            vars_index = len(all_vars) - 1
+            stat = stat.replace(v, f"_var_{vars_index}")
+
+    # purge spaces (and other white spaces)
+
+    return stat.replace(" ", ""), all_vars
 
 
 def parse_cmds(cmds):
@@ -115,7 +139,8 @@ def pars_conds(conds_list):
     # there are conditions to check.
     for cond in conds_list:
         assert isinstance(cond, str)
-
+        # romve spaces to make the output predictable
+        cond = cond.replace(" ", "")
         l_template, l_vars = parse_vars(cond)
         parsed_conds.append([l_template, l_vars, cond])
 
@@ -143,6 +168,12 @@ def expand_pmac_stats(stats, **vars):
     stats_out = []
     # expand the stats one by one
     for stat in stats:
+        assert isinstance(stat, str)
+
+        # ignore line comments
+        if stat.lstrip().startswith("//"):
+            continue
+
         # support base L# format by reverting L# to {L#}
         stat = re.sub(r"(\[)(?=L\d)", "[{", stat)
         stat = re.sub(r"(?<=L\d)(\])", "}]", stat)
@@ -526,7 +557,7 @@ class WrascPmacGate(ra.Agent):
                 break
                 # return ra.StateLogics.Invalid, "comms error"
 
-            ret_val = tpl[0][1].strip("\n").strip(" ").split("=")[-1]
+            ret_val = tpl[0][1].strip("\n").strip(" ").strip("'").split("=")[-1]
 
             if not isPmacNumber(ret_val):
                 # treat this return as string
