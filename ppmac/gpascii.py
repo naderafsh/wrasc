@@ -86,11 +86,13 @@ class GpasciiClient(ClosingContextManager):
         self.d_print("sent gpascii.")
 
         rcv_buffer = ""  # clear buffer for new connection.
-
+        loop_time = time.time()
         # wait for the "Input\n" at the end of line when gpascii starts
         while rcv_buffer.find("Input\n") == -1:
             buffer_temp = self.nb_read()
             rcv_buffer += buffer_temp
+            if time.time() - loop_time > 5: 
+                raise TimeoutError(f"waiting for gpascii on ppmac at {self.host}")
         self.d_print(f"received: \"{rcv_buffer}\"")
 
         self.connected = True
