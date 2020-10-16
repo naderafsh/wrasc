@@ -811,6 +811,7 @@ class Agent(object):
             except AttributeError:
                 _v = None
                 return_message = str(sys.exc_info()[0])
+                raise AttributeError(return_message)
             except TypeError:
                 _v = None
                 return_message = str(sys.exc_info()[0])

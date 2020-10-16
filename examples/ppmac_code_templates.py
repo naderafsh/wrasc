@@ -27,6 +27,29 @@ def assert_pos_wf(xx: int, target_pos, tol):
     )
 
 
+baseConfigFileName = (
+    r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
+)
+
+with open(baseConfigFileName) as f:
+    base_config = f.read().splitlines()
+    f.close
+
+verify_base_config = [
+    cond.replace("=", "==") if ("=" in cond) else cond for cond in base_config
+]
+
+
+pp_global_filename = (
+    r"C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym"
+)
+with open(pp_global_filename) as f:
+    pp_global = f.read().splitlines()
+    f.close
+
+pp_globals = [g.split("\t") for g in pp_global]
+
+
 config_rdb_lmt = [
     # "Motor[L7].PosSf = {encoder_possf}",
     # "EncTable[L7].ScaleFactor = -1/256",

@@ -1,6 +1,7 @@
 from wrasc import reactive_agent as ra
 from wrasc import ppmac_ra as ppra
-from wrasc import gpcom_wrap
+
+# from wrasc import gpcom_wrap
 from os import environ, path
 from ppmac import GpasciiClient
 from math import isclose
@@ -52,9 +53,21 @@ motors[1].JogSpeed = 3.2
 # Win sc: $env:PPMAC_TEST_IP="10.23.92.220"
 ppmac_test_IP = environ["PPMAC_TEST_IP"]
 test_gpascii = GpasciiClient(ppmac_test_IP)
+# TODO ! bad practice ! shall be done in the class
+# attaching the globals dict to the gpasci
+
+test_gpascii.pp_globals = {}
+
+if tls.pp_globals:
+    for var in tls.pp_globals:
+        if var[1] == "Global":
+            test_gpascii.pp_globals.update({var[2]: {"Pvar": var[3], "count": var[4]}})
 
 # verify strings are native ppmac
 # but commands use macros in {} (defined by ppra.macrostrs) which need to be evaluated realtime.
+
+m3_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+m4_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
 m3_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 m4_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
@@ -78,41 +91,23 @@ collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,
 # may disable a coordinate system altogether.
 # this shall not go to Done. After pass, it shall continue checking.
 
+# -1 - check configuration
+
+m3_base_config_ag.setup(
+    pass_conds=tls.verify_base_config, cry_cmds=tls.base_config, **motors[0].LVars(),
+)
 # -------------------------------------------------------------------
 
-collision_stopper_ag.setup(
-    ongoing=True,
-    pass_conds=[
-        # clearance is low
-        f"#{motors[0].motor_n}p > #{motors[1].motor_n}p + {collision_clearance}",
-        # and it is decreasing
-        f"Motor[{motors[0].motor_n}].ActVel - Motor[{motors[1].motor_n}].ActVel > 0",
-    ],
-    celeb_cmds=[f"#{motors[0].motor_n},{motors[1].motor_n}kill"],
-)
+# -------------------------------------------------------------------
+# -1 - check configuration
 
-
-def reset_after_kill(ag_self: ra.Agent):
-    """
-    This aoa checks for collission zone condition. 
-    celeb commands are
-    This is an ongoing check, therefore never gets Done.
-
-    """
-
-    print("KILLLED TO PREVENT COLLISION")
-
-    return ra.StateLogics.Idle, "back to idle"
-
-
-collision_stopper_ag.act_on_armed = reset_after_kill
+# m4_base_config_ag.setup(
+#     pass_conds=tls.verify_base_config, cry_cmds=tls.base_config, **motors[1].LVars(),
+# )
+# -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # 0 - check configuration
-
-# this sets LVars into locals...
-locals().update()
-
 m3_init_checks_ag.setup(
     pass_conds=tls.verify_config_rdb_lmt,
     cry_cmds=tls.config_rdb_lmt,
@@ -212,6 +207,51 @@ m4_slide_off_ag.act_on_armed = dwell_aoa
 
 # -------------------------------------------------------------------
 
+# now setup a sequencer
+inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
+# one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
+inner_loop_ag.repeats = 2 - 1
+inner_loop_ag.all_done_ag = m4_slide_off_ag
+inner_loop_ag.reset_these_ags = [m3_start_pos_ag, m3_on_lim_ag, m3_slide_off_ag]
+inner_loop_ag.reset_these_ags += [m4_start_pos_ag, m4_on_lim_ag, m4_slide_off_ag]
+
+# ----------------------------------------------------------------------
+
+# -------------------------------------------------------------------
+# -------------------------------------------------------------------
+
+collision_stopper_ag.setup(
+    ongoing=True,
+    pass_conds=[
+        # clearance is low
+        f"#{motors[0].motor_n}p > #{motors[1].motor_n}p + {collision_clearance}",
+        # and it is decreasing
+        f"Motor[{motors[0].motor_n}].ActVel - Motor[{motors[1].motor_n}].ActVel > 0",
+    ],
+    celeb_cmds=[f"#{motors[0].motor_n},{motors[1].motor_n}kill"],
+)
+
+
+def reset_after_kill(ag_self: ra.Agent):
+    """
+    This aoa checks for collission zone condition. 
+    celeb commands are
+    This is an ongoing check, therefore never gets Done.
+
+    """
+
+    print("KILLLED TO PREVENT COLLISION")
+
+    return ra.StateLogics.Idle, "back to idle"
+
+
+collision_stopper_ag.act_on_armed = reset_after_kill
+
+# -------------------------------------------------------------------
+# set the forced sequence rules
+
+m3_init_checks_ag.poll_pr = lambda ag_self: m3_base_config_ag.is_done
+m4_init_checks_ag.poll_pr = lambda ag_self: m4_base_config_ag.is_done
 
 # setup the sequence default dependency (can be done automaticatlly)
 m4_start_pos_ag.poll_pr = (
@@ -228,19 +268,6 @@ m3_slide_off_ag.poll_pr = lambda ag_self: m3_on_lim_ag.is_done
 m4_slide_off_ag.poll_pr = lambda ag_self: m4_on_lim_ag.is_done
 
 # -------------------------------------------------------------------
-
-# now setup a sequencer
-inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
-# one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
-inner_loop_ag.repeats = 2 - 1
-inner_loop_ag.all_done_ag = m4_slide_off_ag
-inner_loop_ag.reset_these_ags = [m3_start_pos_ag, m3_on_lim_ag, m3_slide_off_ag]
-inner_loop_ag.reset_these_ags += [m4_start_pos_ag, m4_on_lim_ag, m4_slide_off_ag]
-
-# ----------------------------------------------------------------------
-
-# -------------------------------------------------------------------
-
 
 # ----------------------------------------------------------------------
 

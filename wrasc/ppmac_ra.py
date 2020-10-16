@@ -86,6 +86,9 @@ def parse_vars(stat: str):
             all_vars.append(v)
             vars_index = len(all_vars) - 1
             stat = stat.replace(v, f"_var_{vars_index}")
+        elif v.startswith("$"):
+            # is a valid hex, replace with its decimal value
+            stat = stat.replace(v, str(int(v[1:], 16)))
 
     # purge spaces (and other white spaces)
 
@@ -141,6 +144,9 @@ def pars_conds(conds_list):
         assert isinstance(cond, str)
         # romve spaces to make the output predictable
         cond = cond.replace(" ", "")
+        if not cond:
+            continue
+
         l_template, l_vars = parse_vars(cond)
         parsed_conds.append([l_template, l_vars, cond])
 
@@ -199,6 +205,9 @@ def expand_pmac_stats(stats, **vars):
 
 def ppwr_poll_in(ag_self: ra.Agent):
 
+    assert isinstance(ag_self, WrascPmacGate)
+    ag_self: WrascPmacGate
+
     # TODO: it is tricky here as a continuous poll is not always desired?
     if not ag_self.pass_conds_parsed or len(ag_self.pass_conds_parsed) < 1:
         ag_self.poll.Var = True
@@ -215,9 +224,36 @@ def ppwr_poll_in(ag_self: ra.Agent):
         if verify_text is None:
             return ra.StateLogics.Invalid, "comms error"
 
-        if eval(verify_text) == False:
-            # no need to check the rest of the conditions
-            return False, f"No Pass: {statement} "
+        one_sided_verify_text = verify_text.replace("==", " - (") + ")"
+
+        # TODO improve this, the whole scheme shall bwork on a numpy is_close instead of isequal:
+        # depending on the lvar, round off or not!
+        left_side = condition[1][0]
+        qual = left_side.lower().split(".")[-1]
+        if qual.endswith("speed"):
+            _precision = 1e-6
+        elif qual.endswith("gain"):
+            _precision = 1.0e-7
+        elif qual.endswith("pwmsf"):
+            _precision = 1  # probably wrong
+        elif qual.endswith("maxint"):
+            _precision = 0.0625
+        else:
+            _precision = 1e-16
+
+        try:
+            if abs(eval(one_sided_verify_text)) > _precision:
+                # if eval(verify_text) == False:
+                # no need to check the rest of the conditions
+                return (
+                    False,
+                    f"No pass - {statement}: {one_sided_verify_text} > {_precision}",
+                )
+        except:
+            # arithmentic error, check literal statement
+            if eval(verify_text) == False:
+                # no need to check the rest of the conditions
+                return False, f"No Pass - {statement}: {verify_text} "
 
     # now that it is going to be True, calculate the logs.
     # they will be saved to file via actions:
@@ -248,6 +284,9 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
 
     This will ARM if an act_on_armed method is defined. This is for users to hook their custom methods
     """
+
+    assert isinstance(ag_self, WrascPmacGate)
+    ag_self: WrascPmacGate
 
     # Arm for action if poll is changed to False or True
     if ag_self.poll.Var == True:
@@ -317,6 +356,9 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
 
 def ppwr_act_on_invalid(ag_self: ra.Agent):
 
+    assert isinstance(ag_self, WrascPmacGate)
+    ag_self: WrascPmacGate
+
     ag_self.cry_tries = 0
 
     if ag_self.fetch_cmds_parsed:
@@ -380,6 +422,7 @@ class WrascPmacGate(ra.Agent):
         csv_file_name=None,
         **kwargs,
     ):
+        self.pp_globals = {}
 
         self.ongoing = False
 
@@ -395,7 +438,7 @@ class WrascPmacGate(ra.Agent):
             self.dmAgentType = "uninitialised"
             return
 
-        self.ppmac = ppmac
+        self.ppmac = ppmac  # type : GpasciiClient
 
         if not self.ppmac.connected:
             self.ppmac.connect()
@@ -566,12 +609,10 @@ class WrascPmacGate(ra.Agent):
             elif ret_val.startswith("$"):
                 # check if it is a valid hex
                 ret_val = str(int(ret_val[1:], 16))
-            else:
-                ret_val = str(round(float(ret_val), self.ndigits))
 
             l_template = l_template.replace(f"_var_{i}", ret_val)
-
-        return l_template, statement
+        # ppmac is a non case sensitive system, so return comparison statement in lower case
+        return l_template.lower(), statement
 
     @property
     def is_done(self):
@@ -589,6 +630,9 @@ def done_condition_poi(ag_self: ra.Agent):
     # set the sequence by setting the prohibits
     # this agent remains invalid until the process is all done
     # and then uses
+
+    assert isinstance(ag_self, WrascRepeatUntil)
+    ag_self: WrascRepeatUntil
 
     all_stages_passed = ag_self.all_done_ag.is_done  # poll.Var
 
@@ -616,6 +660,10 @@ def done_condition_poi(ag_self: ra.Agent):
 
 
 def arm_to_quit_aov(ag_self: ra.Agent):
+
+    assert isinstance(ag_self, WrascRepeatUntil)
+    ag_self: WrascRepeatUntil
+
     if ag_self.poll.Var == True:
         # inform and log, confirm with other agents...
         return ra.StateLogics.Armed, "out."
@@ -637,6 +685,9 @@ def arm_to_quit_aov(ag_self: ra.Agent):
 
 
 def quit_act_aoa(ag_self: ra.Agent):
+
+    assert isinstance(ag_self, WrascRepeatUntil)
+    ag_self: WrascRepeatUntil
 
     if not ag_self.quit_if_done:
         ag_self.repeats = 30
@@ -671,11 +722,16 @@ class WrascRepeatUntil(ra.Agent):
         self.all_done_ag = None
         self.reset_these_ags = []
         self.quit_if_done = True
+        self.repeats = 0
 
 
-default_asic = lambda motor: (motor - 1) // 4
-default_chan = lambda motor: (motor - 1) % 4
-default_companion = lambda motor: motor + 8
+default_asic = lambda axis: (axis - 1) // 4
+default_chan = lambda axis: (axis - 1) % 4
+default_companion = lambda axis: axis + 8
+
+
+def default_asic_chan(axis):
+    return (axis - 1) // 4, (axis - 1) % 4
 
 
 class axis:
@@ -683,9 +739,12 @@ class axis:
         super().__init__()
 
         self.motor_n = amp_number
-        self.asic_n = default_asic(self.motor_n)
-        self.chan_n = default_chan(self.motor_n)
-        self.companion_n = default_companion(self.motor_n)
+        self.prim_asic, self.prim_chan = default_asic_chan(self.motor_n)
+
+        self.second_asic = self.prim_asic
+        self.second_chan = self.prim_chan
+
+        self.companion_axis = default_companion(self.motor_n)
 
         self.setup(**kwargs)
 
@@ -698,9 +757,14 @@ class axis:
 
         return {
             "L1": self.motor_n,
-            "L2": self.asic_n,
-            "L3": self.chan_n,
-            "L7": self.companion_n,
+            "L2": self.prim_asic,
+            "L3": self.prim_chan,
+            "L4": self.second_asic,
+            "L5": self.second_chan,
+            # 0 basis motor used in BroickLV structure e.g. BrickLV.Chan[L6].TwoPhaseMode=1
+            "L6": self.motor_n - 1,
+            # companion axis
+            "L7": self.companion_axis,
         }
 
     def expand_stats(self, stats):
