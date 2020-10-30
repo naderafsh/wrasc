@@ -43,7 +43,7 @@ for stat in test_stats:
 print("expand_pmac_stats test 2 passed.")
 
 # now testing pars_cond function
-testing_func = ppra.pars_conds
+testing_func = ppra.parse_stats
 
 test_stats = {
     "EncTable[L1].ScaleFactor=1 / (256 )": [

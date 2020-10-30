@@ -26,7 +26,7 @@ The Agents then can e forced to an "anchored sequence"
 The aoa method of the Agent can be used to implement additional functions which execute after pass condition is met.
 
 Returns:
-    [type]: [description]
+    stats_inscription]
 """
 
 
@@ -40,47 +40,53 @@ def dwell_aoa(ag_self: ra.Agent):
 
 _VERBOSE_ = 2
 wracs_period = 0.250
-
-# specific test data
+# pp_glob_dictst data
 collision_clearance = 250
-motors = [ppra.axis(3), ppra.axis(4)]
+motors = {"a": ppra.axis(3), "b": ppra.axis(4)}
 
-motors[0].JogSpeed = 3.2
-motors[1].JogSpeed = 3.2
+motors["a"].JogSpeed = 3.2
+motors["b"].JogSpeed = 3.2
 
 # test code
 # Linux:  export PPMAC_TEST_IP="10.23.92.220"
 # Win sc: $env:PPMAC_TEST_IP="10.23.92.220"
 ppmac_test_IP = environ["PPMAC_TEST_IP"]
 test_gpascii = GpasciiClient(ppmac_test_IP)
-# TODO ! bad practice ! shall be done in the class
-# attaching the globals dict to the gpasci
 
-test_gpascii.pp_globals = {}
 
-if tls.pp_globals:
-    for var in tls.pp_globals:
-        if var[1] == "Global":
-            test_gpascii.pp_globals.update({var[2]: {"Pvar": var[3], "count": var[4]}})
+pp_global_filename = (
+    r"C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym"
+)
+pp_glob_dict = ppra.load_pp_globals(pp_global_filename)
+baseConfigFileName = (
+    r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
+)
+
+with open(baseConfigFileName) as f:
+    base_config = f.read().splitlines()
+    f.close
+
+config_stats, verify_stats = ppra.expand_globals(
+    base_config, pp_glob_dict, **motors["a"].LVars()
+)
 
 # verify strings are native ppmac
 # but commands use macros in {} (defined by ppra.macrostrs) which need to be evaluated realtime.
 
-m3_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-m4_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+ma_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+mb_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
-m3_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-m4_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+ma_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+mb_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
-m3_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-m4_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+ma_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+mb_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
+ma_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+mb_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
-m3_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-m4_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-
-m3_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-m4_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+ma_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+mb_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
 collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
@@ -93,117 +99,135 @@ collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,
 
 # -1 - check configuration
 
-m3_base_config_ag.setup(
-    pass_conds=tls.verify_base_config, cry_cmds=tls.base_config, **motors[0].LVars(),
+# -------- motor A
+ma_base_config_ag.setup(
+    pass_conds=verify_stats,
+    cry_cmds=config_stats,
+    celeb_cmds="#{L1}$",
+    **motors["a"].LVars(),
+)
+
+# -------- motor B
+mb_base_config_ag.setup(
+    pass_conds=verify_stats,
+    cry_cmds=config_stats,
+    celeb_cmds="#{L1}$",
+    **motors["b"].LVars(),
 )
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
-# -1 - check configuration
-
-# m4_base_config_ag.setup(
-#     pass_conds=tls.verify_base_config, cry_cmds=tls.base_config, **motors[1].LVars(),
-# )
-# -------------------------------------------------------------------
-
-# -------------------------------------------------------------------
 # 0 - check configuration
-m3_init_checks_ag.setup(
+
+# -------- motor A
+ma_init_checks_ag.setup(
     pass_conds=tls.verify_config_rdb_lmt,
     cry_cmds=tls.config_rdb_lmt,
-    **motors[0].LVars(),
-    JogSpeed=motors[0].JogSpeed,
+    celeb_cmds="%100",
+    **motors["a"].LVars(),
+    JogSpeed=motors["a"].JogSpeed,
 )
-# -------------------------------------------------------------------
-# 0 - check configuration
-m4_init_checks_ag.setup(
+
+# -------- motor B
+mb_init_checks_ag.setup(
     pass_conds=tls.verify_config_rdb_lmt,
     cry_cmds=tls.config_rdb_lmt,
-    **motors[1].LVars(),
-    JogSpeed=motors[1].JogSpeed,
+    celeb_cmds="%100",
+    **motors["b"].LVars(),
+    JogSpeed=motors["b"].JogSpeed,
 )
 # -------------------------------------------------------------------
 # 1 - settle at staring point
+
+# -------- motor A
 SettlePos = 10000
-m3_start_pos_ag.setup(
-    pass_conds=tls.assert_pos_wf(motors[0].motor_n, SettlePos, 10)[0],
-    cry_cmds=[f"#{motors[0].motor_n}jog=={SettlePos}"],
+ma_start_pos_ag.setup(
+    pass_conds=tls.assert_pos_wf(motors["a"].motor_n, SettlePos, 10)[0],
+    cry_cmds=[f"#{motors['a'].motor_n}jog=={SettlePos}"],
     celeb_cmds=[],
 )
 
-# -------------------------------------------------------------------
-# 1 - settle at staring point
+# -------- motor B
 SettlePos = 10000
-m4_start_pos_ag.setup(
-    pass_conds=tls.assert_pos_wf(motors[1].motor_n, SettlePos, 10)[0],
-    cry_cmds=[f"#{motors[1].motor_n}jog=={SettlePos}"],
+mb_start_pos_ag.setup(
+    pass_conds=tls.assert_pos_wf(motors["b"].motor_n, SettlePos, 10)[0],
+    cry_cmds=[f"#{motors['b'].motor_n}jog=={SettlePos}"],
     celeb_cmds=[],
 )
 
 # -------------------------------------------------------------------
 # 2 - Move onto the minus limit and wait to stabilise
-m3_on_lim_ag.setup(
+
+# -------- motor A
+ma_on_lim_ag.setup(
     cry_cmds=["#{L1}jog{MoveToLimitDir}"],
     pass_conds=["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"],
-    L1=motors[0].motor_n,
+    L1=motors["a"].motor_n,
     MoveToLimitDir="-",
 )
 
-m3_on_lim_ag.dwell_aoa = 0.1
-m3_on_lim_ag.act_on_armed = dwell_aoa
+ma_on_lim_ag.dwell_aoa = 0.1
+ma_on_lim_ag.act_on_armed = dwell_aoa
 
-# -------------------------------------------------------------------
-# 2 - Move onto the minus limit and wait to stabilise
-m4_on_lim_ag.setup(
+# -------- motor B
+mb_on_lim_ag.setup(
     cry_cmds=["#{L1}jog{MoveToLimitDir}"],
     pass_conds=["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"],
-    L1=motors[1].motor_n,
+    L1=motors["b"].motor_n,
     MoveToLimitDir="-",
 )
 
-m4_on_lim_ag.dwell_aoa = 0.1
-m4_on_lim_ag.act_on_armed = dwell_aoa
-
+mb_on_lim_ag.dwell_aoa = 0.1
+mb_on_lim_ag.act_on_armed = dwell_aoa
 
 # -------------------------------------------------------------------
 # 3 - Arm Capture and slide off for capturing the falling edge
-m3_slide_off_ag.setup(
+
+# -------- motor A
+pass_logs, verify_stats = ppra.expand_globals(
+    tls.log_capt_rbk_tl, pp_glob_dict, **motors["a"].LVars()
+)
+
+ma_slide_off_ag.setup(
     cry_cmds=tls.jog_capt_rbk_tl,
     pass_conds=tls.check_off_limit_inpos_tl,
-    pass_logs=tls.log_capt_rbk_tl,
+    pass_logs=pass_logs,
     # resetting the changes in this action
     celeb_cmds=tls.reset_rbk_capt_tl + ["#{L1}hmz"],
     # and the macro substitutes
-    **motors[0].LVars(),
-    JogSpeed=motors[0].JogSpeed,
+    **motors["a"].LVars(),
+    JogSpeed=motors["a"].JogSpeed,
     trigOffset=100,
     HomeVel=1.28,
     CaptureJogDir="+",
-    csv_file_name=path.join("autest_out", "m3_capture.csv"),
+    csv_file_name=path.join("autest_out", "ma_capture.csv"),
+)
+ma_slide_off_ag.dwell_aoa = 0.01
+ma_slide_off_ag.act_on_armed = dwell_aoa
+
+# -------- motor B
+
+pass_logs, verify_stats = ppra.expand_globals(
+    tls.log_capt_rbk_tl, pp_glob_dict, **motors["b"].LVars()
 )
 
-m3_slide_off_ag.dwell_aoa = 0.01
-m3_slide_off_ag.act_on_armed = dwell_aoa
-# -------------------------------------------------------------------
-# 3 - Arm Capture and slide off for capturing the falling edge
-m4_slide_off_ag.setup(
+mb_slide_off_ag.setup(
     cry_cmds=tls.jog_capt_rbk_tl,
     pass_conds=tls.check_off_limit_inpos_tl,
-    pass_logs=tls.log_capt_rbk_tl,
+    pass_logs=pass_logs,
     # resetting the changes in this action,
     # and we add a home zero to the template
     celeb_cmds=tls.reset_rbk_capt_tl + ["#{L1}hmz"],
     # and the macro substitutes
-    **motors[1].LVars(),
-    JogSpeed=motors[1].JogSpeed,
+    **motors["b"].LVars(),
+    JogSpeed=motors["b"].JogSpeed,
     trigOffset=100,
     HomeVel=1.28,
     CaptureJogDir="+",
-    csv_file_name=path.join("autest_out", "m4_capture.csv"),
+    csv_file_name=path.join("autest_out", "mb_capture.csv"),
 )
-
-m4_slide_off_ag.dwell_aoa = 0.01
-m4_slide_off_ag.act_on_armed = dwell_aoa
+mb_slide_off_ag.dwell_aoa = 0.01
+mb_slide_off_ag.act_on_armed = dwell_aoa
 
 # -------------------------------------------------------------------
 
@@ -211,9 +235,9 @@ m4_slide_off_ag.act_on_armed = dwell_aoa
 inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
 inner_loop_ag.repeats = 2 - 1
-inner_loop_ag.all_done_ag = m4_slide_off_ag
-inner_loop_ag.reset_these_ags = [m3_start_pos_ag, m3_on_lim_ag, m3_slide_off_ag]
-inner_loop_ag.reset_these_ags += [m4_start_pos_ag, m4_on_lim_ag, m4_slide_off_ag]
+inner_loop_ag.all_done_ag = mb_slide_off_ag
+inner_loop_ag.reset_these_ags = [ma_start_pos_ag, ma_on_lim_ag, ma_slide_off_ag]
+inner_loop_ag.reset_these_ags += [mb_start_pos_ag, mb_on_lim_ag, mb_slide_off_ag]
 
 # ----------------------------------------------------------------------
 
@@ -224,22 +248,26 @@ collision_stopper_ag.setup(
     ongoing=True,
     pass_conds=[
         # clearance is low
-        f"#{motors[0].motor_n}p > #{motors[1].motor_n}p + {collision_clearance}",
+        f"#{motors['a'].motor_n}p > #{motors['b'].motor_n}p + {collision_clearance}",
         # and it is decreasing
-        f"Motor[{motors[0].motor_n}].ActVel - Motor[{motors[1].motor_n}].ActVel > 0",
+        f"Motor[{motors['a'].motor_n}].ActVel - Motor[{motors['b'].motor_n}].ActVel > 0",
     ],
-    celeb_cmds=[f"#{motors[0].motor_n},{motors[1].motor_n}kill"],
+    celeb_cmds=[f"#{motors['a'].motor_n},{motors['b'].motor_n}kill"],
 )
 
 
 def reset_after_kill(ag_self: ra.Agent):
-    """
+    """    
     This aoa checks for collission zone condition. 
     celeb commands are
     This is an ongoing check, therefore never gets Done.
 
-    """
+    Args:
+        ag_self (ra.Agent): [description]
 
+    Returns:
+        [type]: [description]
+    """
     print("KILLLED TO PREVENT COLLISION")
 
     return ra.StateLogics.Idle, "back to idle"
@@ -250,22 +278,22 @@ collision_stopper_ag.act_on_armed = reset_after_kill
 # -------------------------------------------------------------------
 # set the forced sequence rules
 
-m3_init_checks_ag.poll_pr = lambda ag_self: m3_base_config_ag.is_done
-m4_init_checks_ag.poll_pr = lambda ag_self: m4_base_config_ag.is_done
+ma_init_checks_ag.poll_pr = lambda ag_self: ma_base_config_ag.is_done
+mb_init_checks_ag.poll_pr = lambda ag_self: mb_base_config_ag.is_done
 
 # setup the sequence default dependency (can be done automaticatlly)
-m4_start_pos_ag.poll_pr = (
-    lambda ag_self: m3_init_checks_ag.act.Var and m4_init_checks_ag.is_done
+mb_start_pos_ag.poll_pr = (
+    lambda ag_self: ma_init_checks_ag.act.Var and mb_init_checks_ag.is_done
 )
 
-m3_start_pos_ag.poll_pr = lambda ag_self: m4_start_pos_ag.is_done
+ma_start_pos_ag.poll_pr = lambda ag_self: mb_start_pos_ag.is_done
 
-m3_on_lim_ag.poll_pr = lambda ag_self: m3_start_pos_ag.is_done
+ma_on_lim_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
 
-m4_on_lim_ag.poll_pr = lambda ag_self: m3_on_lim_ag.is_done
+mb_on_lim_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
 
-m3_slide_off_ag.poll_pr = lambda ag_self: m3_on_lim_ag.is_done
-m4_slide_off_ag.poll_pr = lambda ag_self: m4_on_lim_ag.is_done
+ma_slide_off_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
+mb_slide_off_ag.poll_pr = lambda ag_self: mb_on_lim_ag.is_done
 
 # -------------------------------------------------------------------
 
@@ -278,11 +306,11 @@ m4_slide_off_ag.poll_pr = lambda ag_self: m4_on_lim_ag.is_done
 # agents_sorted_by_layer =
 # input('press any key to start the process loop...')
 # dm module takes control of the process loop
+
+agents = ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01")
+
 ppra.ra.process_loop(
-    ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01"),
-    100000,
-    cycle_period=wracs_period,
-    debug=True,
+    agents, 100000, cycle_period=wracs_period, debug=True,
 )
 
 test_gpascii.close

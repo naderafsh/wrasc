@@ -1,3 +1,6 @@
+import regex as re
+
+
 def assert_pos_wf(xx: int, target_pos, tol):
     """
 
@@ -27,29 +30,6 @@ def assert_pos_wf(xx: int, target_pos, tol):
     )
 
 
-baseConfigFileName = (
-    r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
-)
-
-with open(baseConfigFileName) as f:
-    base_config = f.read().splitlines()
-    f.close
-
-verify_base_config = [
-    cond.replace("=", "==") if ("=" in cond) else cond for cond in base_config
-]
-
-
-pp_global_filename = (
-    r"C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym"
-)
-with open(pp_global_filename) as f:
-    pp_global = f.read().splitlines()
-    f.close
-
-pp_globals = [g.split("\t") for g in pp_global]
-
-
 config_rdb_lmt = [
     # "Motor[L7].PosSf = {encoder_possf}",
     # "EncTable[L7].ScaleFactor = -1/256",
@@ -70,6 +50,7 @@ config_rdb_lmt = [
     "Motor[L1].CaptureMode=0",
     "PowerBrick[L2].Chan[L3].CaptCtrl=10",
     "Motor[L1].JogSpeed={JogSpeed}",
+    "Motor[L7].JogSpeed={JogSpeed}/10000",
 ]
 
 verify_config_rdb_lmt = [
@@ -102,6 +83,7 @@ log_capt_rbk_tl = [
     # test condition parameter
     "Motor[L1].JogSpeed",
     "full_current(L1)",
+    "i{L1}77",
     "Motor[L7].CapturePos",
     "Motor[L1].TriggerNotFound",
     "Motor[L7].TriggerNotFound",
@@ -109,5 +91,6 @@ log_capt_rbk_tl = [
 
 reset_rbk_capt_tl = [
     "Motor[L1].JogSpeed={JogSpeed}",
+    "Motor[L1].CaptureMode=1",  # reset capture mode to default baseConfig
     "#{L7}j/",
 ]

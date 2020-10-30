@@ -23,6 +23,68 @@ macrostrs = ["{", "}"]
 ppmac_func_dict = {"EXP2": "2**"}
 
 
+def load_pp_globals(pp_global_filename):
+    """loads ppmac global list form file and arranges a dictionary
+
+    Args:
+        pp_global_filename (str): [description]
+
+    Returns:
+        dict: ppmac globals in a dict
+    """
+    pp_glob_dict = dict()
+    with open(pp_global_filename) as f:
+        pp_global = f.read().splitlines()
+        f.close
+
+    for glob in pp_global:
+        pp_glob = glob.split("\t")
+        if pp_glob[1] == "Global":
+            pp_glob_dict[pp_glob[2].split("(")[0]] = {
+                "base": pp_glob[3],
+                "count": int(pp_glob[4]),
+            }
+    return pp_glob_dict
+
+
+def expand_globals(stats_in, pp_glob_dict, **vars):
+    """ 
+    converts statements with ppmac IDE handled globals back into ppmac native P-Vars
+    also adds a compare equivalent for the statements list
+    Args:
+        pp_glob_dict (dict of dicts): [description]
+        stats_in (list of strings): [description]
+
+    Returns:
+        list of strings: [description]
+    """
+
+    stats_out = []
+    for stat in stats_in:
+        stat_ = stat
+        for glob, glob_fields in pp_glob_dict.items():
+            if glob not in stat:
+                continue
+
+            # substitute global var
+            if glob_fields["count"] > 1:
+                # look for paranthesis and take care of index
+                globals_in_stat = re.findall(f"({glob})(\()(\w*)(\))", stat)
+                for to_find in globals_in_stat:
+                    to_replace = f"P({glob_fields['base']}+{to_find[2]})"
+                    stat_ = stat_.replace("".join(to_find[:]), to_replace)
+            else:
+                stat_ = stat_.replace(glob, f"P{glob_fields['base']}")
+
+        stats_out.append(stat_)
+
+    verify_base_config = [
+        cond.replace("=", "==") if ("=" in cond) else cond for cond in stats_out
+    ]
+
+    return stats_out, verify_base_config
+
+
 def isPmacNumber(s: str):
 
     if s.startswith("$"):
@@ -58,21 +120,36 @@ def isPmacFunction(s: str):
 
 def parse_vars(stat: str):
 
-    # parse right or left soides of equation
-    # to parametrised temlate and list of vars
+    """parses a pmac statement 
+    returns a template and a variable list.
+    The variable are replaced by _var_{vars_index} in the template.
 
-    # pass_conds = [
-    #     f"isclose( {cond.split('=')[0]}, {cond.split('=')[1]}, abs_tol=1e05)"
-    #     for cond in cry_cmds
-    # ]
-
-    # sub macros here?
+    example:
+    input-> "EncTable[3].pEnc = Motor[3].PhasePos.a"
+    output-> ("_var_0=='Motor[3].PhasePos.a'" , ['EncTable[3].pEnc'])
+    
+    Returns:
+        (template, var list): a template and a variable list 
+    """
 
     all_vars = []
-    # any_side: no change if it is a ppmacnumber, or an address
 
+    # first see if there are P-Var or I-Var references
+
+    p_vars = re.findall(r"[pP]\([\w+]*\)", stat)
+    for v in p_vars:
+        all_vars.append(v)
+        vars_index = len(all_vars) - 1
+        stat = stat.replace(v, f"_var_{vars_index}")
+
+    # split the statement
     for v in re.split(r"[\+\-\*\/=><! \(\)]", stat):
-        if v and not isPmacNumber(v):
+
+        if v.startswith("_"):
+            # this is a variable, ignore
+            pass
+
+        elif v and not isPmacNumber(v):
 
             if isPmacPointer(v):  # this is a pointer, treat this as quoted text
                 stat = stat.replace(v, f"'{v}'")
@@ -124,23 +201,30 @@ def parse_cmds(cmds):
         else:
             cmds_out.append(cmd)
 
-    return "\n".join(cmds_out)
+    # purge spaces in command strings
+
+    return "\n".join(cmds_out).replace(" ", "")
 
 
-def pars_conds(conds_list):
+def parse_stats(stat_list):
 
-    # makes a list of variables on the watchlist which need to be fetched and relpaced with real-time values, real time.
+    """parses pmac statements into template and variables, 
+    so the variables can be fetched from ppmac to evaluate the statement based on real-time ppmac values.
 
-    if conds_list is None:
+    Returns:
+        [type]: [description]
+    """
+
+    if stat_list is None:
         return []
 
     # make sure "pass_conds_parsed" is a list
-    if isinstance(conds_list, str):
-        conds_list = [conds_list]
+    if isinstance(stat_list, str):
+        stat_list = [stat_list]
 
     parsed_conds = list()
     # there are conditions to check.
-    for cond in conds_list:
+    for cond in stat_list:
         assert isinstance(cond, str)
         # romve spaces to make the output predictable
         cond = cond.replace(" ", "")
@@ -155,11 +239,19 @@ def pars_conds(conds_list):
 
 def expand_pmac_stats(stats, **vars):
 
-    # this function expands the ppmac statements for the channel parmeters
-    # parameters shall be in the form of L1 ... L10 or {whatever}
-    # all of the variables shall be supplies via **vars
-    #
-    # this allows to scale the templates for different channel configuration
+    """    this function expands the ppmac statements for the channel parmeters
+    parameters shall be in the form of L1 ... L10 or {whatever}
+    all of the variables shall be supplies via **vars
+    
+    this allows to scale the templates for different channel configuration
+
+
+    Raises:
+        RuntimeError: [description]
+
+    Returns:
+        [type]: [description]
+    """
 
     # first, some type checking
 
@@ -181,8 +273,18 @@ def expand_pmac_stats(stats, **vars):
             continue
 
         # support base L# format by reverting L# to {L#}
-        stat = re.sub(r"(\[)(?=L\d)", "[{", stat)
-        stat = re.sub(r"(?<=L\d)(\])", "}]", stat)
+        # stat = re.sub(r"(\[)(?=L\d)", "[{", stat)
+        # stat = re.sub(r"(?<=L\d)(\])", "}]", stat)
+
+        # find L# except the ones already in {}
+        l_vars = re.findall(r"(?<=[^\w{])(L\d)(?:[^\w{])", stat)
+
+        for lvar in set(l_vars):
+            # put L# in curley brackets
+            stat = stat.replace(lvar, "{" + lvar + "}")
+
+        # if any(str_ in stat for str_ in ["{{", "}}"]):
+        #     raise RuntimeError(f"invalid stat syntax {stat}")
 
         try:
             stats_out.append(stat.format(**vars))
@@ -222,7 +324,12 @@ def ppwr_poll_in(ag_self: ra.Agent):
         verify_text, statement = ag_self.check_cond(condition)
 
         if verify_text is None:
+            # major comms error, do not try the rest of the conditions?
             return ra.StateLogics.Invalid, "comms error"
+
+        if verify_text == "err":
+            # this condition had some issues with syntax, continue with the rest
+            verify_text = verify_text
 
         one_sided_verify_text = verify_text.replace("==", " - (") + ")"
 
@@ -382,13 +489,13 @@ def normalise_header(_header):
 
 class Conditions(object):
     def __init__(self, value=None):
-        self.value = pars_conds(value)
+        self.value = parse_stats(value)
 
     def __get__(self, instance, owner):
         return self.value
 
     def __set__(self, instance, value):
-        self.value = pars_conds(value)
+        self.value = parse_stats(value)
 
 
 class WrascPmacGate(ra.Agent):
@@ -494,13 +601,13 @@ class WrascPmacGate(ra.Agent):
         self.pass_conds = expand_pmac_stats(
             pass_conds if pass_conds else self.pass_conds, **kwargs
         )
-        self.pass_conds_parsed = pars_conds(self.pass_conds)
+        self.pass_conds_parsed = parse_stats(self.pass_conds)
 
         # pass_logs_parsed need to be fetched with pass_conds_parsed, stored, and logged at celeb.
         self.pass_logs = expand_pmac_stats(
             pass_logs if pass_logs else self.pass_logs, **kwargs
         )
-        self.pass_logs_parsed = pars_conds(self.pass_logs)
+        self.pass_logs_parsed = parse_stats(self.pass_logs)
 
         if csv_file_name:
             self.csv_file_name = csv_file_name
@@ -567,22 +674,33 @@ class WrascPmacGate(ra.Agent):
 
     def eval_cmd(self, cmds_str):
 
-        # evaluate {} macros with actual values from ppmac
-        # this is done at the very late stage i.e. as late as possible.
-        # As opposed to this one,
+        """ evaluates {} macros with actual values from ppmac
+        this is done at the very late stage i.e. as late as possible.
+       
+        Raises:
+            RuntimeError: [description]
+
+        Returns:
+            [type]: [description]
+        """
+
+        # purge spaces
+        cmds_str = cmds_str.replace(" ", "")
 
         macro_list = re.findall(f"(?:{macrostrs[0]})(.*?)(?:{macrostrs[1]})", cmds_str)
+        # evaluate the macro's first.
+        # These are the "right side" statements in a command,
+        # which ppmac can not resolve in an online command as opposed to a plc or a program.
+        for stat in parse_stats(macro_list):
 
-        for condition in pars_conds(macro_list):
-
-            l_template, statement = self.check_cond(condition)
+            l_template, statement = self.check_cond(stat)
 
             if l_template is None:
                 raise RuntimeError(f"comms with ppmac at {self.ppmac.host}")
 
             rt_val = eval(l_template)
-            replace = macrostrs[0] + statement + macrostrs[1]
-            cmds_str = cmds_str.replace(f"{replace}", f"{rt_val}")
+            evaluated_stat = macrostrs[0] + statement + macrostrs[1]
+            cmds_str = cmds_str.replace(evaluated_stat, f"{rt_val}")
 
         return cmds_str
 
