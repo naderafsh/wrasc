@@ -335,32 +335,34 @@ def ppwr_poll_in(ag_self: ra.Agent):
 
         # TODO improve this, the whole scheme shall bwork on a numpy is_close instead of isequal:
         # depending on the lvar, round off or not!
-        left_side = condition[1][0]
+        left_side = condition[1][0]  # type: str
         qual = left_side.lower().split(".")[-1]
         if qual.endswith("speed"):
-            _precision = 1e-6
+            precision = 1e-6
         elif qual.endswith("gain"):
-            _precision = 1.0e-7
+            precision = 1.0e-7
         elif qual.endswith("pwmsf"):
-            _precision = 1  # probably wrong
+            precision = 1  # probably wrong
         elif qual.endswith("maxint"):
-            _precision = 0.0625
+            precision = 0.0625
+        elif qual.endswith("scalefactor"):
+            precision = 1e-16
         else:
-            _precision = 1e-16
+            precision = 1e-16
 
         try:
-            if abs(eval(one_sided_verify_text)) > _precision:
+            if abs(eval(one_sided_verify_text)) > precision:
                 # if eval(verify_text) == False:
                 # no need to check the rest of the conditions
                 return (
                     False,
-                    f"No pass - {statement}: {one_sided_verify_text} > {_precision}",
+                    f"{statement}: {one_sided_verify_text} > {precision}",
                 )
         except:
             # arithmentic error, check literal statement
             if eval(verify_text) == False:
                 # no need to check the rest of the conditions
-                return False, f"No Pass - {statement}: {verify_text} "
+                return False, f"{statement}: {verify_text} "
 
     # now that it is going to be True, calculate the logs.
     # they will be saved to file via actions:
@@ -863,6 +865,8 @@ class axis:
         self.second_chan = self.prim_chan
 
         self.companion_axis = default_companion(self.motor_n)
+
+        self.reverse_encoder = False
 
         self.setup(**kwargs)
 

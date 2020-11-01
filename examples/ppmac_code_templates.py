@@ -93,4 +93,6 @@ reset_rbk_capt_tl = [
     "Motor[L1].JogSpeed={JogSpeed}",
     "Motor[L1].CaptureMode=1",  # reset capture mode to default baseConfig
     "#{L7}j/",
+    "#{L1}hmz",
+    "#{L7}kill",
 ]

@@ -41,17 +41,24 @@ def dwell_aoa(ag_self: ra.Agent):
 _VERBOSE_ = 2
 wracs_period = 0.250
 # pp_glob_dictst data
-collision_clearance = 250
+collision_clearance = 2000
 motors = {"a": ppra.axis(3), "b": ppra.axis(4)}
 
 motors["a"].JogSpeed = 3.2
 motors["b"].JogSpeed = 3.2
+
+motors["a"].reverse_encoder = False
+motors["b"].reverse_encoder = True
 
 # test code
 # Linux:  export PPMAC_TEST_IP="10.23.92.220"
 # Win sc: $env:PPMAC_TEST_IP="10.23.92.220"
 ppmac_test_IP = environ["PPMAC_TEST_IP"]
 test_gpascii = GpasciiClient(ppmac_test_IP)
+# it is possible to use multiple gpascii channels,
+# but we don't have a reason to do so, yet!
+test_gpascii_A = test_gpascii
+test_gpascii_B = test_gpascii
 
 
 pp_global_filename = (
@@ -66,27 +73,23 @@ with open(baseConfigFileName) as f:
     base_config = f.read().splitlines()
     f.close
 
-config_stats, verify_stats = ppra.expand_globals(
-    base_config, pp_glob_dict, **motors["a"].LVars()
-)
-
 # verify strings are native ppmac
 # but commands use macros in {} (defined by ppra.macrostrs) which need to be evaluated realtime.
 
-ma_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-mb_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+ma_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
+mb_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_B,)
 
-ma_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-mb_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+ma_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
+mb_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_B,)
 
-ma_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-mb_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+ma_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
+mb_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_B,)
 
-ma_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-mb_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+ma_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
+mb_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_B,)
 
-ma_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-mb_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
+ma_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
+mb_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_B,)
 
 collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
 
@@ -100,24 +103,41 @@ collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,
 # -1 - check configuration
 
 # -------- motor A
+config_stats, verify_stats = ppra.expand_globals(
+    base_config, pp_glob_dict, **motors["a"].LVars()
+)
+
 ma_base_config_ag.setup(
     pass_conds=verify_stats,
     cry_cmds=config_stats,
     celeb_cmds="#{L1}$",
     **motors["a"].LVars(),
 )
+# to ensure plc type config files take effect,
+# the config needs to be applied more thanb one time.
+# this is because some statements refer to other settings
+# which may change during download.
+#
+# TODO : maybe consider downloading only the non-matching criteria...
+# and trry as many times? or skip exact statements if they are lready verified?
+ma_base_config_ag.cry_retries = 2
 
 # -------- motor B
+config_stats, verify_stats = ppra.expand_globals(
+    base_config, pp_glob_dict, **motors["b"].LVars()
+)
 mb_base_config_ag.setup(
     pass_conds=verify_stats,
     cry_cmds=config_stats,
     celeb_cmds="#{L1}$",
     **motors["b"].LVars(),
 )
+mb_base_config_ag.cry_retries = 2
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # 0 - check configuration
+# also add axis confix if there are deviations from baseConfig
 
 # -------- motor A
 ma_init_checks_ag.setup(
@@ -129,9 +149,20 @@ ma_init_checks_ag.setup(
 )
 
 # -------- motor B
+
+# axis config
+# reverse encoder direction for motor B companion
+
+rev_enc_cmd = (
+    ["PowerBrick[L2].Chan[L3].EncCtrl=7"]
+    if motors["b"].reverse_encoder
+    else ["PowerBrick[L2].Chan[L3].EncCtrl=3"]
+)
+rev_enc_verify = [rev_enc_cmd[0].replace("=", "==")]
+
 mb_init_checks_ag.setup(
-    pass_conds=tls.verify_config_rdb_lmt,
-    cry_cmds=tls.config_rdb_lmt,
+    pass_conds=tls.verify_config_rdb_lmt + rev_enc_verify,
+    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd,
     celeb_cmds="%100",
     **motors["b"].LVars(),
     JogSpeed=motors["b"].JogSpeed,
@@ -193,7 +224,7 @@ ma_slide_off_ag.setup(
     pass_conds=tls.check_off_limit_inpos_tl,
     pass_logs=pass_logs,
     # resetting the changes in this action
-    celeb_cmds=tls.reset_rbk_capt_tl + ["#{L1}hmz"],
+    celeb_cmds=tls.reset_rbk_capt_tl,
     # and the macro substitutes
     **motors["a"].LVars(),
     JogSpeed=motors["a"].JogSpeed,
@@ -217,7 +248,7 @@ mb_slide_off_ag.setup(
     pass_logs=pass_logs,
     # resetting the changes in this action,
     # and we add a home zero to the template
-    celeb_cmds=tls.reset_rbk_capt_tl + ["#{L1}hmz"],
+    celeb_cmds=tls.reset_rbk_capt_tl,
     # and the macro substitutes
     **motors["b"].LVars(),
     JogSpeed=motors["b"].JogSpeed,
@@ -248,7 +279,7 @@ collision_stopper_ag.setup(
     ongoing=True,
     pass_conds=[
         # clearance is low
-        f"#{motors['a'].motor_n}p > #{motors['b'].motor_n}p + {collision_clearance}",
+        f"#{motors['a'].companion_axis}p > #{motors['b'].companion_axis}p + {collision_clearance}",
         # and it is decreasing
         f"Motor[{motors['a'].motor_n}].ActVel - Motor[{motors['b'].motor_n}].ActVel > 0",
     ],
@@ -286,11 +317,13 @@ mb_start_pos_ag.poll_pr = (
     lambda ag_self: ma_init_checks_ag.act.Var and mb_init_checks_ag.is_done
 )
 
-ma_start_pos_ag.poll_pr = lambda ag_self: mb_start_pos_ag.is_done
+ma_start_pos_ag.poll_pr = lambda ag_self: mb_start_pos_ag.poll_pr(
+    ag_self
+)  # or .is_done if you want ma to wait for mb
 
 ma_on_lim_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
 
-mb_on_lim_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
+mb_on_lim_ag.poll_pr = lambda ag_self: mb_start_pos_ag.is_done  # ma_on_lim_ag.is_done
 
 ma_slide_off_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
 mb_slide_off_ag.poll_pr = lambda ag_self: mb_on_lim_ag.is_done
