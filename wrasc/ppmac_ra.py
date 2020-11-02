@@ -23,6 +23,10 @@ macrostrs = ["{", "}"]
 ppmac_func_dict = {"EXP2": "2**"}
 
 
+def stats_to_conds(cmd_stats):
+    return [cond.replace("=", "==") if ("=" in cond) else cond for cond in cmd_stats]
+
+
 def load_pp_globals(pp_global_filename):
     """loads ppmac global list form file and arranges a dictionary
 
@@ -78,11 +82,7 @@ def expand_globals(stats_in, pp_glob_dict, **vars):
 
         stats_out.append(stat_)
 
-    verify_base_config = [
-        cond.replace("=", "==") if ("=" in cond) else cond for cond in stats_out
-    ]
-
-    return stats_out, verify_base_config
+    return stats_out
 
 
 def isPmacNumber(s: str):
@@ -186,9 +186,11 @@ def parse_cmds(cmds):
     # convert list to one string of lines
     cmds_out = []
     for cmd in cmds:
-        # separate right and left side
+        assert isinstance(cmd, str)
+
+        # purge spaces and separate right and left side
         # need to add all possible online comands here too: "^:*" ?
-        cmd_split = cmd.split("=")
+        cmd_split = cmd.replace(" ", "").split("=")
         cmd_left = cmd_split[0]
         if len(cmd_split) > 1:
             # in case of jog==45 , right side would be
@@ -594,11 +596,41 @@ class WrascPmacGate(ra.Agent):
         **kwargs,
     ):
 
+        """
+        sets up class parameters:
+        fetch_mds: commands to run when pass values are invalid. These might be establidhsing connection
+        pass_conds: pass conditions as list of texts. A pass_cond=True always passes. 
+        In case of [] or None or not passing, cry_cmds will be used to create verification condition:
+         "=" in statements will be replaced by "==". non-statement commands will be ignored.
+        """
+
         if ongoing:
             self.ongoing = ongoing
 
         # every one of cmds and conds pass this point,
         # so its best to esxpand them here
+
+        self.fetch_cmds = expand_pmac_stats(
+            fetch_cmds if fetch_cmds else self.fetch_cmds, **kwargs
+        )
+        self.fetch_cmds_parsed = parse_cmds(self.fetch_cmds)
+
+        self.cry_cmds = expand_pmac_stats(
+            cry_cmds if cry_cmds else self.cry_cmds, **kwargs
+        )
+        self.cry_cmds_parsed = parse_cmds(self.cry_cmds)
+
+        self.celeb_cmds = expand_pmac_stats(
+            celeb_cmds if celeb_cmds else self.celeb_cmds, **kwargs
+        )
+        self.celeb_cmds_parsed = parse_cmds(self.celeb_cmds)
+
+        if cry_retries:
+            self.cry_retries = cry_retries
+
+        if (not pass_conds) and (cry_cmds):
+            # an empty pass-cond (but not a None) mneans: chacke for all of the command statements:
+            pass_conds = stats_to_conds(cry_cmds)
 
         self.pass_conds = expand_pmac_stats(
             pass_conds if pass_conds else self.pass_conds, **kwargs
@@ -650,24 +682,6 @@ class WrascPmacGate(ra.Agent):
             # self.log_vals = []
             self.csvcontent = None
 
-        self.fetch_cmds = expand_pmac_stats(
-            fetch_cmds if fetch_cmds else self.fetch_cmds, **kwargs
-        )
-        self.fetch_cmds_parsed = parse_cmds(self.fetch_cmds)
-
-        self.cry_cmds = expand_pmac_stats(
-            cry_cmds if cry_cmds else self.cry_cmds, **kwargs
-        )
-        self.cry_cmds_parsed = parse_cmds(self.cry_cmds)
-
-        self.celeb_cmds = expand_pmac_stats(
-            celeb_cmds if celeb_cmds else self.celeb_cmds, **kwargs
-        )
-        self.celeb_cmds_parsed = parse_cmds(self.celeb_cmds)
-
-        if cry_retries:
-            self.cry_retries = cry_retries
-
         # TODO change this crap[ solution
         # floating digits used for == comparison
         self.ndigits = 6
@@ -689,6 +703,7 @@ class WrascPmacGate(ra.Agent):
         # purge spaces
         cmds_str = cmds_str.replace(" ", "")
 
+        # find all of the macros which are previously marked by {} at parse time
         macro_list = re.findall(f"(?:{macrostrs[0]})(.*?)(?:{macrostrs[1]})", cmds_str)
         # evaluate the macro's first.
         # These are the "right side" statements in a command,

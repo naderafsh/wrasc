@@ -103,18 +103,17 @@ collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,
 # -1 - check configuration
 
 # -------- motor A
-config_stats, verify_stats = ppra.expand_globals(
-    base_config, pp_glob_dict, **motors["a"].LVars()
-)
+config_stats = ppra.expand_globals(base_config, pp_glob_dict, **motors["a"].LVars())
 
 ma_base_config_ag.setup(
-    pass_conds=verify_stats,
+    # pass_conds=verify_stats,
     cry_cmds=config_stats,
     celeb_cmds="#{L1}$",
     **motors["a"].LVars(),
 )
+
 # to ensure plc type config files take effect,
-# the config needs to be applied more thanb one time.
+# the config needs to be applied more than one time.
 # this is because some statements refer to other settings
 # which may change during download.
 #
@@ -123,11 +122,9 @@ ma_base_config_ag.setup(
 ma_base_config_ag.cry_retries = 2
 
 # -------- motor B
-config_stats, verify_stats = ppra.expand_globals(
-    base_config, pp_glob_dict, **motors["b"].LVars()
-)
+config_stats = ppra.expand_globals(base_config, pp_glob_dict, **motors["b"].LVars())
 mb_base_config_ag.setup(
-    pass_conds=verify_stats,
+    # pass_conds=verify_stats,
     cry_cmds=config_stats,
     celeb_cmds="#{L1}$",
     **motors["b"].LVars(),
@@ -215,7 +212,7 @@ mb_on_lim_ag.act_on_armed = dwell_aoa
 # 3 - Arm Capture and slide off for capturing the falling edge
 
 # -------- motor A
-pass_logs, verify_stats = ppra.expand_globals(
+pass_logs = ppra.expand_globals(
     tls.log_capt_rbk_tl, pp_glob_dict, **motors["a"].LVars()
 )
 
@@ -238,7 +235,7 @@ ma_slide_off_ag.act_on_armed = dwell_aoa
 
 # -------- motor B
 
-pass_logs, verify_stats = ppra.expand_globals(
+pass_logs = ppra.expand_globals(
     tls.log_capt_rbk_tl, pp_glob_dict, **motors["b"].LVars()
 )
 
