@@ -58,12 +58,7 @@ verify_config_rdb_lmt = [
 ]
 
 jog_capt_rbk_tl = [
-    "Motor[L7].CapturePos=1",
-    "Motor[L1].JogSpeed={HomeVel}",
-    "#{L1}j:{CaptureJogDir}2000^{trigOffset}",
-    # companion axis is fooled to think it is jogging
-    "Motor[L7].JogSpeed=0.00001",
-    "#{L7}j:10^0",
+    "#{L1}j:{CaptureJogDir}2000^{Trig_Offset} #{L7}j:10^0",
 ]
 
 check_off_limit_inpos_tl = [
@@ -87,12 +82,12 @@ log_capt_rbk_tl = [
     "Motor[L7].CapturePos",
     "Motor[L1].TriggerNotFound",
     "Motor[L7].TriggerNotFound",
+    "PowerBrick[L2].Chan[L3].CountError",
 ]
 
 reset_rbk_capt_tl = [
     "Motor[L1].JogSpeed={JogSpeed}",
     "Motor[L1].CaptureMode=1",  # reset capture mode to default baseConfig
-    "#{L7}j/",
     "#{L1}hmz",
-    "#{L7}kill",
+    "PowerBrick[L2].Chan[L3].CountError=0",
 ]
