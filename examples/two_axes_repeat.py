@@ -40,15 +40,33 @@ def dwell_aoa(ag_self: ra.Agent):
 
 _VERBOSE_ = 2
 wracs_period = 0.250
+Loop_Repeats = 20
 # pp_glob_dictst data
 collision_clearance = 2000
-motors = {"a": ppra.axis(3), "b": ppra.axis(4)}
+motors = {"a": ppra.axis(3).LVars(), "b": ppra.axis(4).LVars()}
 
-motors["a"].JogSpeed = 3.2
-motors["b"].JogSpeed = 3.2
 
-motors["a"].reverse_encoder = False
-motors["b"].reverse_encoder = True
+motors["a"]["JogSpeed"] = 3.2
+motors["b"]["JogSpeed"] = 3.2
+
+motors["a"]["Reverse_Enc"] = False
+motors["b"]["Reverse_Enc"] = True
+
+motors["a"]["MoveToLimitDir"] = "-"
+motors["b"]["MoveToLimitDir"] = "-"
+
+motors["a"]["Trig_Offset"] = 100
+motors["b"]["Trig_Offset"] = 100
+
+motors["a"]["Home_Vel"] = 1.28
+motors["b"]["Home_Vel"] = 1.28
+
+motors["a"]["CaptureJogDir"] = "+"
+motors["b"]["CaptureJogDir"] = "+"
+
+motors["a"]["csv_file_name"] = path.join("autest_out", "ma_capture.csv")
+motors["b"]["csv_file_name"] = path.join("autest_out", "mb_capture.csv")
+
 
 # test code
 # Linux:  export PPMAC_TEST_IP="10.23.92.220"
@@ -103,13 +121,13 @@ collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,
 # -1 - check configuration
 
 # -------- motor A
-config_stats = ppra.expand_globals(base_config, pp_glob_dict, **motors["a"].LVars())
+config_stats = ppra.expand_globals(base_config, pp_glob_dict, **motors["a"])
 
 ma_base_config_ag.setup(
     # pass_conds=verify_stats,
     cry_cmds=config_stats,
     celeb_cmds="#{L1}$",
-    **motors["a"].LVars(),
+    **motors["a"],
 )
 
 # to ensure plc type config files take effect,
@@ -122,12 +140,12 @@ ma_base_config_ag.setup(
 ma_base_config_ag.cry_retries = 2
 
 # -------- motor B
-config_stats = ppra.expand_globals(base_config, pp_glob_dict, **motors["b"].LVars())
+config_stats = ppra.expand_globals(base_config, pp_glob_dict, **motors["b"])
 mb_base_config_ag.setup(
     # pass_conds=verify_stats,
     cry_cmds=config_stats,
     celeb_cmds="#{L1}$",
-    **motors["b"].LVars(),
+    **motors["b"],
 )
 mb_base_config_ag.cry_retries = 2
 # -------------------------------------------------------------------
@@ -138,11 +156,7 @@ mb_base_config_ag.cry_retries = 2
 
 # -------- motor A
 ma_init_checks_ag.setup(
-    pass_conds=tls.verify_config_rdb_lmt,
-    cry_cmds=tls.config_rdb_lmt,
-    celeb_cmds="%100",
-    **motors["a"].LVars(),
-    JogSpeed=motors["a"].JogSpeed,
+    cry_cmds=tls.config_rdb_lmt, celeb_cmds="%100", **motors["a"],
 )
 
 # -------- motor B
@@ -152,17 +166,12 @@ ma_init_checks_ag.setup(
 
 rev_enc_cmd = (
     ["PowerBrick[L2].Chan[L3].EncCtrl=7"]
-    if motors["b"].reverse_encoder
+    if motors["b"]["Reverse_Enc"]
     else ["PowerBrick[L2].Chan[L3].EncCtrl=3"]
 )
-rev_enc_verify = [rev_enc_cmd[0].replace("=", "==")]
 
 mb_init_checks_ag.setup(
-    pass_conds=tls.verify_config_rdb_lmt + rev_enc_verify,
-    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd,
-    celeb_cmds="%100",
-    **motors["b"].LVars(),
-    JogSpeed=motors["b"].JogSpeed,
+    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd, celeb_cmds="%100", **motors["b"],
 )
 # -------------------------------------------------------------------
 # 1 - settle at staring point
@@ -170,28 +179,36 @@ mb_init_checks_ag.setup(
 # -------- motor A
 SettlePos = 10000
 ma_start_pos_ag.setup(
-    pass_conds=tls.assert_pos_wf(motors["a"].motor_n, SettlePos, 10)[0],
-    cry_cmds=[f"#{motors['a'].motor_n}jog=={SettlePos}"],
+    pass_conds=tls.assert_pos_wf(motors["a"]["L1"], SettlePos, 10)[0],
+    cry_cmds=["#{L1}jog=={SettlePos}"],
     celeb_cmds=[],
+    **motors["a"],
+    SettlePos=SettlePos,
 )
 
 # -------- motor B
 SettlePos = 10000
 mb_start_pos_ag.setup(
-    pass_conds=tls.assert_pos_wf(motors["b"].motor_n, SettlePos, 10)[0],
-    cry_cmds=[f"#{motors['b'].motor_n}jog=={SettlePos}"],
+    pass_conds=tls.assert_pos_wf(motors["b"]["L1"], SettlePos, 10)[0],
+    cry_cmds=["#{L1}jog=={SettlePos}"],
     celeb_cmds=[],
+    **motors["b"],
+    SettlePos=SettlePos,
 )
 
 # -------------------------------------------------------------------
-# 2 - Move onto the minus limit and wait to stabilise
+# 2 - Move onto the minus limit and wait to stabilise,
 
 # -------- motor A
 ma_on_lim_ag.setup(
     cry_cmds=["#{L1}jog{MoveToLimitDir}"],
     pass_conds=["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"],
-    L1=motors["a"].motor_n,
-    MoveToLimitDir="-",
+    celeb_cmds=[
+        "Motor[L1].JogSpeed={Home_Vel}",
+        "Motor[L7].JogSpeed=0.00001",
+        "Motor[L7].CapturePos=1",
+    ],
+    **motors["a"],
 )
 
 ma_on_lim_ag.dwell_aoa = 0.1
@@ -201,8 +218,12 @@ ma_on_lim_ag.act_on_armed = dwell_aoa
 mb_on_lim_ag.setup(
     cry_cmds=["#{L1}jog{MoveToLimitDir}"],
     pass_conds=["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"],
-    L1=motors["b"].motor_n,
-    MoveToLimitDir="-",
+    celeb_cmds=[
+        "Motor[L1].JogSpeed={Home_Vel}",
+        "Motor[L7].JogSpeed=0.00001",
+        "Motor[L7].CapturePos=1",
+    ],
+    **motors["b"],
 )
 
 mb_on_lim_ag.dwell_aoa = 0.1
@@ -212,9 +233,7 @@ mb_on_lim_ag.act_on_armed = dwell_aoa
 # 3 - Arm Capture and slide off for capturing the falling edge
 
 # -------- motor A
-pass_logs = ppra.expand_globals(
-    tls.log_capt_rbk_tl, pp_glob_dict, **motors["a"].LVars()
-)
+pass_logs = ppra.expand_globals(tls.log_capt_rbk_tl, pp_glob_dict, **motors["a"])
 
 ma_slide_off_ag.setup(
     cry_cmds=tls.jog_capt_rbk_tl,
@@ -222,37 +241,22 @@ ma_slide_off_ag.setup(
     pass_logs=pass_logs,
     # resetting the changes in this action
     celeb_cmds=tls.reset_rbk_capt_tl,
-    # and the macro substitutes
-    **motors["a"].LVars(),
-    JogSpeed=motors["a"].JogSpeed,
-    trigOffset=100,
-    HomeVel=1.28,
-    CaptureJogDir="+",
-    csv_file_name=path.join("autest_out", "ma_capture.csv"),
+    **motors["a"],
 )
 ma_slide_off_ag.dwell_aoa = 0.01
 ma_slide_off_ag.act_on_armed = dwell_aoa
 
 # -------- motor B
 
-pass_logs = ppra.expand_globals(
-    tls.log_capt_rbk_tl, pp_glob_dict, **motors["b"].LVars()
-)
+pass_logs = ppra.expand_globals(tls.log_capt_rbk_tl, pp_glob_dict, **motors["b"])
 
 mb_slide_off_ag.setup(
     cry_cmds=tls.jog_capt_rbk_tl,
     pass_conds=tls.check_off_limit_inpos_tl,
     pass_logs=pass_logs,
     # resetting the changes in this action,
-    # and we add a home zero to the template
     celeb_cmds=tls.reset_rbk_capt_tl,
-    # and the macro substitutes
-    **motors["b"].LVars(),
-    JogSpeed=motors["b"].JogSpeed,
-    trigOffset=100,
-    HomeVel=1.28,
-    CaptureJogDir="+",
-    csv_file_name=path.join("autest_out", "mb_capture.csv"),
+    **motors["b"],
 )
 mb_slide_off_ag.dwell_aoa = 0.01
 mb_slide_off_ag.act_on_armed = dwell_aoa
@@ -262,7 +266,7 @@ mb_slide_off_ag.act_on_armed = dwell_aoa
 # now setup a sequencer
 inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
-inner_loop_ag.repeats = 2 - 1
+inner_loop_ag.repeats = Loop_Repeats - 1
 inner_loop_ag.all_done_ag = mb_slide_off_ag
 inner_loop_ag.reset_these_ags = [ma_start_pos_ag, ma_on_lim_ag, ma_slide_off_ag]
 inner_loop_ag.reset_these_ags += [mb_start_pos_ag, mb_on_lim_ag, mb_slide_off_ag]
@@ -276,11 +280,11 @@ collision_stopper_ag.setup(
     ongoing=True,
     pass_conds=[
         # clearance is low
-        f"#{motors['a'].companion_axis}p > #{motors['b'].companion_axis}p + {collision_clearance}",
+        f"#{motors['a']['L7']}p > #{motors['b']['L7']}p + {collision_clearance}",
         # and it is decreasing
-        f"Motor[{motors['a'].motor_n}].ActVel - Motor[{motors['b'].motor_n}].ActVel > 0",
+        f"Motor[{motors['a']['L1']}].ActVel - Motor[{motors['b']['L1']}].ActVel > 0",
     ],
-    celeb_cmds=[f"#{motors['a'].motor_n},{motors['b'].motor_n}kill"],
+    celeb_cmds=[f"#{motors['a']['L1']},{motors['b']['L1']}kill"],
 )
 
 
