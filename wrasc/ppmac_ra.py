@@ -607,7 +607,6 @@ class WrascPmacGate(ra.Agent):
         In case of [] or None or not passing, cry_cmds will be used to create verification condition:
          "=" in statements will be replaced by "==". non-statement commands will be ignored.
         """
-
         if ongoing:
             self.ongoing = ongoing
 
@@ -726,8 +725,17 @@ class WrascPmacGate(ra.Agent):
         return cmds_str
 
     def check_cond(self, condition):
+        """
+        Evaluates the condition/statement, by fethcing all macro variables from ppmac
 
-        l_template, l_vars, statement = condition
+        Args:
+            condition ([type]): [description]
+
+        Returns:
+            (str,str): evaluated_stat.lower(), statement
+        """
+
+        evaluated_stat, l_vars, statement = condition
 
         for i, l_var in enumerate(l_vars):
             # acquire the variable to check
@@ -735,7 +743,7 @@ class WrascPmacGate(ra.Agent):
 
             if not tpl[1]:
                 self.poll.Var = None
-                l_template = "Err"
+                evaluated_stat = "Err"
                 break
                 # return ra.StateLogics.Invalid, "comms error"
 
@@ -749,12 +757,19 @@ class WrascPmacGate(ra.Agent):
                 # check if it is a valid hex
                 ret_val = str(int(ret_val[1:], 16))
 
-            l_template = l_template.replace(f"_var_{i}", ret_val)
+            evaluated_stat = evaluated_stat.replace(f"_var_{i}", ret_val)
         # ppmac is a non case sensitive system, so return comparison statement in lower case
-        return l_template.lower(), statement
+        return evaluated_stat.lower(), statement
 
     @property
     def is_done(self):
+
+        """ True if the agent actions are complete
+        Always True for agents with ongoing variable set
+
+        Returns:
+            [type]: [description]
+        """
 
         if self.ongoing or self.act.Var:
             return True
@@ -765,10 +780,15 @@ class WrascPmacGate(ra.Agent):
 # -------------------------------------------------------------------
 def done_condition_poi(ag_self: ra.Agent):
 
-    # check "done" condition.
-    # set the sequence by setting the prohibits
-    # this agent remains invalid until the process is all done
-    # and then uses
+    """[summary] poll in method
+        check "done" condition.
+        set the sequence by setting the prohibits
+        this agent remains invalid until the process is all done
+        and then uses
+
+    Returns:
+        [type]: [description]
+    """
 
     assert isinstance(ag_self, WrascRepeatUntil)
     ag_self: WrascRepeatUntil
@@ -799,6 +819,16 @@ def done_condition_poi(ag_self: ra.Agent):
 
 
 def arm_to_quit_aov(ag_self: ra.Agent):
+    """action on valid: arm to 
+    either reset the self.reset_these_ags list of agents, 
+    or quit wrasc if repeat times exceed self.repeats
+
+    Args:
+        ag_self (ra.Agent): [description]
+
+    Returns:
+        [type]: [description]
+    """
 
     assert isinstance(ag_self, WrascRepeatUntil)
     ag_self: WrascRepeatUntil
@@ -824,6 +854,18 @@ def arm_to_quit_aov(ag_self: ra.Agent):
 
 
 def quit_act_aoa(ag_self: ra.Agent):
+    """ act on armed:
+
+    quit if agent value is True, else go Idle again
+
+    (incomplete) if quit_if_done is not set, then do n more repeats
+
+    Args:
+        ag_self (ra.Agent): [description]
+
+    Returns:
+        [type]: [description]
+    """
 
     assert isinstance(ag_self, WrascRepeatUntil)
     ag_self: WrascRepeatUntil
@@ -841,6 +883,12 @@ def quit_act_aoa(ag_self: ra.Agent):
 
 
 class WrascRepeatUntil(ra.Agent):
+    """ A repeat Until special Reactive Agent
+
+    Args:
+        ra ([type]): [description]
+    """
+
     def __init__(
         self,
         poll_in=done_condition_poi,
@@ -856,7 +904,7 @@ class WrascRepeatUntil(ra.Agent):
             **kwargs,
         )
 
-        self.dmAgentType = "sequencer_wrasc"
+        self.dmAgentType = "RepeatUntil_RA"
 
         self.all_done_ag = None
         self.reset_these_ags = []
