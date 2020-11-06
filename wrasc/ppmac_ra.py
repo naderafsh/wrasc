@@ -23,6 +23,10 @@ macrostrs = ["{", "}"]
 ppmac_func_dict = {"EXP2": "2**"}
 
 
+def default_asic_chan(axis):
+    return (axis - 1) // 4, (axis - 1) % 4
+
+
 def stats_to_conds(cmd_stats):
     return [cond.replace("=", "==") if ("=" in cond) else cond for cond in cmd_stats]
 
@@ -863,10 +867,6 @@ class WrascRepeatUntil(ra.Agent):
 default_asic = lambda axis: (axis - 1) // 4
 default_chan = lambda axis: (axis - 1) % 4
 default_companion = lambda axis: axis + 8
-
-
-def default_asic_chan(axis):
-    return (axis - 1) // 4, (axis - 1) % 4
 
 
 class axis:

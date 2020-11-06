@@ -1,6 +1,38 @@
 import regex as re
 
 
+"""
+it seems that the capture flag is being consumed, 
+as only one capture can be RELIABLY done upon one flag fall
+example:
+
+Motor[3].JogSpeed=2.4 #3j-
+#11kill
+#11j:+6274^10 Motor[11].CapturePos=1
+Motor[3].JogSpeed=0.1 #3j:+2000    
+
+captures Motor[11], but not Motor[3]
+
+opposite:
+
+Motor[L1].JogSpeed=2.4 #3j-
+#11kill
+#11j:+6274^10 Motor[11].CapturePos=1
+Motor[3].JogSpeed=0.1 #3j:+2000^100
+
+and 
+
+Motor[L1].JogSpeed=2.4 #3j-
+#11kill
+#11j:+6274^10 Motor[11].CapturePos=1
+Motor[3].JogSpeed=0.1 #3j:+2000 Motor[3].CapturePos=1    
+
+only capture Motor[3], not Motor[11]
+
+
+"""
+
+
 def assert_pos_wf(xx: int, target_pos, tol):
     """
 
@@ -50,7 +82,7 @@ config_rdb_lmt = [
     "Motor[L1].CaptureMode=0",
     "PowerBrick[L2].Chan[L3].CaptCtrl=10",
     "Motor[L1].JogSpeed={JogSpeed}",
-    "Motor[L7].JogSpeed={JogSpeed}/10000",
+    "Motor[L7].JogSpeed=0.02",
 ]
 
 verify_config_rdb_lmt = [
@@ -58,7 +90,7 @@ verify_config_rdb_lmt = [
 ]
 
 jog_capt_rbk_tl = [
-    "#{L1}j:{CaptureJogDir}2000^{Trig_Offset} #{L7}j:10^0",
+    "#{L1}j:{SlideOff_Dir}2000^{Trig_Offset} #{L7}j:10^0",
 ]
 
 check_off_limit_inpos_tl = [
@@ -67,22 +99,25 @@ check_off_limit_inpos_tl = [
     "Motor[L1].InPos>0",
 ]
 log_capt_rbk_tl = [
-    # main axis
-    "Motor[L1].HomePos",
-    "Motor[L1].CapturedPos",
-    "#{L1}p",
-    # companion axis used for readback
-    "Motor[L7].HomePos",
+    # readback capture via companion axis
     "Motor[L7].CapturedPos",
+    # readback and step position at stop position
     "#{L7}p",
+    "#{L1}p",
     # test condition parameter
     "Motor[L1].JogSpeed",
     "full_current(L1)",
-    "i{L1}77",
+    "Motor[L1].IdCmd",
+    # position references
+    "Motor[L1].HomePos",
+    "Motor[L7].HomePos",
+    # Check these for errors
     "Motor[L7].CapturePos",
     "Motor[L1].TriggerNotFound",
     "Motor[L7].TriggerNotFound",
     "PowerBrick[L2].Chan[L3].CountError",
+    #    No capture on open loop steps as of 201106
+    #    "Motor[L1].CapturedPos",
 ]
 
 reset_rbk_capt_tl = [

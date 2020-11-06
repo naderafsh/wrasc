@@ -3,6 +3,7 @@ PBTools
 # my own dump
 *_dump
 *_out
+*_in
 
 # VSCode
 *vscode
