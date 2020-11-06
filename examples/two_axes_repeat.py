@@ -42,35 +42,18 @@ def dwell_aoa(ag_self: ra.Agent):
 _VERBOSE_ = 3
 
 
-class MotionTest(yaml.YAMLObject):
-    yaml_tag = "!MotionTest"
+tst = dict()
 
-    def __init__(
-        self, Wracs_Period=0.250, Loop_Repeats=1, Collision_Clearance=99999999
-    ):
-        self.Wracs_Period = Wracs_Period
-        self.Loop_Repeats = Loop_Repeats
-        # pp_glob_dictst data
-        self.Collision_Clearance = Collision_Clearance
-
-        # self.__repr__ = self.__str__
-
-    # def __repr__(self):
-    #     return "%s( Loop_Repeats=%r)" % (self.__class__.__name__, self.Loop_Repeats)
-
-    # @classmethod
-    # def from_yaml(cls, loader, node):
-    #     return MotionTest(node.value)
-    # @classmethod
-    # def to_yaml(cls, dumper, data):
-    #     return dumper.represent_scalar(cls.yaml_tag, data.text)
-
-
-tst = dict()  # MotionTest(Wracs_Period=2.50, Loop_Repeats=20, Collision_Clearance=2000)
-
-Wracs_Period = tst["Wracs_Period"] = 0.25
+Script_Loop_Period = tst["Script_Loop_Period"] = 0.25
 Loop_Repeats = tst["Loop_Repeats"] = 20
 Collision_Clearance = tst["Collision_Clearance"] = 200000
+
+PpGlobal_Filename = tst[
+    "PpGlobal_Filename"
+] = r"C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym"
+BaseConfig_FileName = tst[
+    "BaseConfig_FileName"
+] = r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
 
 # pp_glob_dictst data
 
@@ -84,23 +67,21 @@ tst["Mot_B"]["JogSpeed"] = 3.2
 tst["Mot_A"]["Reverse_Enc"] = False
 tst["Mot_B"]["Reverse_Enc"] = True
 
-# tst["Mot_A"]["MoveToLimitDir"] = "-"
-# tst["Mot_B"]["MoveToLimitDir"] = "-"
-
-tst["Mot_A"]["Trig_Offset"] = 100
-tst["Mot_B"]["Trig_Offset"] = 100
+# tst["Mot_A"]["Trig_Offset"] = 100
+# tst["Mot_B"]["Trig_Offset"] = 100
 
 tst["Mot_A"]["Home_Vel"] = 1.28
 tst["Mot_B"]["Home_Vel"] = 1.28
 
-# tst["Mot_A"]["SlideOff_Dir"] = "+"
-# tst["Mot_B"]["SlideOff_Dir"] = "+"
+tst["Mot_A"]["SlideOff_Dist"] = 400
+tst["Mot_B"]["SlideOff_Dist"] = 400
 
 tst["Mot_A"]["csv_file_name"] = path.join("autest_out", "ma_capture.csv")
 tst["Mot_B"]["csv_file_name"] = path.join("autest_out", "mb_capture.csv")
 
-tst["Mot_A"]["SettlePos"] = 1000
-tst["Mot_B"]["SettlePos"] = 1000
+tst["Mot_A"]["SettlePos"] = 2000
+tst["Mot_B"]["SettlePos"] = 2000
+
 
 # tst = utils.undump_obj("sample_test", "autest_in")
 print(tst)
@@ -117,16 +98,8 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 test_gpascii_A = test_gpascii
 test_gpascii_B = test_gpascii
 
-
-pp_global_filename = (
-    r"C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym"
-)
-pp_glob_dict = ppra.load_pp_globals(pp_global_filename)
-baseConfigFileName = (
-    r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
-)
-
-with open(baseConfigFileName) as f:
+pp_glob_dict = ppra.load_pp_globals(PpGlobal_Filename)
+with open(BaseConfig_FileName) as f:
     base_config = f.read().splitlines()
     f.close
 
@@ -165,10 +138,7 @@ collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,
 config_stats = ppra.expand_globals(base_config, pp_glob_dict, **tst["Mot_A"])
 
 ma_base_config_ag.setup(
-    # pass_conds=verify_stats,
-    cry_cmds=config_stats,
-    celeb_cmds="#{L1}$",
-    **tst["Mot_A"],
+    **tst["Mot_A"], cry_cmds=config_stats, celeb_cmds="#{L1}$",
 )
 
 # to ensure plc type config files take effect,
@@ -183,10 +153,7 @@ ma_base_config_ag.cry_retries = 2
 # -------- motor B
 config_stats = ppra.expand_globals(base_config, pp_glob_dict, **tst["Mot_B"])
 mb_base_config_ag.setup(
-    # pass_conds=verify_stats,
-    cry_cmds=config_stats,
-    celeb_cmds="#{L1}$",
-    **tst["Mot_B"],
+    **tst["Mot_B"], cry_cmds=config_stats, celeb_cmds="#{L1}$",
 )
 mb_base_config_ag.cry_retries = 2
 # -------------------------------------------------------------------
@@ -205,7 +172,7 @@ rev_enc_cmd = (
 
 
 ma_init_checks_ag.setup(
-    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd, celeb_cmds="%100", **tst["Mot_A"],
+    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd, celeb_cmds=["%100"], **tst["Mot_A"],
 )
 
 # -------- motor B
@@ -220,27 +187,84 @@ rev_enc_cmd = (
 )
 
 mb_init_checks_ag.setup(
-    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd, celeb_cmds="%100", **tst["Mot_B"],
+    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd, celeb_cmds=["%100"], **tst["Mot_B"],
 )
 # -------------------------------------------------------------------
+# 0.1 - Move to MLIM
+
+
+# -------- motor A
+ma_init_on_lim_ag = ppra.WrascPmacGate(
+    verbose=_VERBOSE_,
+    ppmac=test_gpascii_A,
+    **tst["Mot_A"],
+    pass_conds=tls.cond_on_neg_lim,
+    cry_cmds="#{L1}j-",
+    celeb_cmds="#{L1}hm j/",  # stop incomplete to leave HomeComplete at 0
+)
+
+
+# 0.2 - Home sliding off the limit
+
+ma_init_on_home_ag = ppra.WrascPmacGate(
+    verbose=_VERBOSE_,
+    ppmac=test_gpascii_A,
+    **tst["Mot_A"],
+    pass_conds=["Motor[L1].HomeComplete==1", "Motor[L1].InPos==1"],
+    cry_cmds="#{L1}hm",
+    celeb_cmds="#{L7} kill",
+)
+
+
+# -------- motor B
+
+mb_init_on_lim_ag = ppra.WrascPmacGate(
+    verbose=_VERBOSE_,
+    ppmac=test_gpascii_A,
+    **tst["Mot_B"],
+    pass_conds=tls.cond_on_neg_lim,
+    cry_cmds="#{L1}j-",
+    celeb_cmds="#{L1}hm j/",  # stop incomplete to leave HomeComplete at 0
+)
+
+
+# 0.2 - Home sliding off the limit
+
+mb_init_on_home_ag = ppra.WrascPmacGate(
+    verbose=_VERBOSE_,
+    ppmac=test_gpascii_A,
+    **tst["Mot_B"],
+    pass_conds=["Motor[L1].HomeComplete==1", "Motor[L1].InPos==1"],
+    cry_cmds="#{L1}hm",
+    celeb_cmds="#{L7} kill",
+)
+
+
+# -------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------
+# -------------------------------------------------------------------
+
+
 # 1 - settle at staring point
 
 # -------- motor A
 SettlePos = tst["Mot_A"]["SettlePos"]
 ma_start_pos_ag.setup(
+    **tst["Mot_A"],
     pass_conds=tls.assert_pos_wf(tst["Mot_A"]["L1"], SettlePos, 10)[0],
     cry_cmds=["#{L1}jog=={SettlePos}"],
     celeb_cmds=[],
-    **tst["Mot_A"],
 )
 
 # -------- motor B
 SettlePos = tst["Mot_B"]["SettlePos"]
 mb_start_pos_ag.setup(
+    **tst["Mot_B"],
     pass_conds=tls.assert_pos_wf(tst["Mot_B"]["L1"], SettlePos, 10)[0],
     cry_cmds=["#{L1}jog=={SettlePos}"],
     celeb_cmds=[],
-    **tst["Mot_B"],
 )
 
 # -------------------------------------------------------------------
@@ -250,7 +274,7 @@ mb_start_pos_ag.setup(
 ma_on_lim_ag.setup(
     **tst["Mot_A"],
     cry_cmds=["#{L1}jog-"],
-    pass_conds=["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"],
+    pass_conds=tls.cond_on_neg_lim,
     celeb_cmds=["#{L7}kill"],
 )
 
@@ -279,9 +303,9 @@ ma_slide_off_ag.setup(
     SlideOff_Dir="+",
     cry_cmds=[
         "Motor[L1].JogSpeed={Home_Vel}",
-        "#{L7}j:{SlideOff_Dir}6274",
+        "#{L7}j:{SlideOff_Dir}{SlideOff_Dist}",
         "Motor[L7].CapturePos=1",
-        "#{L1}j:{SlideOff_Dir}400",
+        "#{L1}j:{SlideOff_Dir}{SlideOff_Dist}",
     ],
     pass_conds=tls.check_off_limit_inpos_tl,
     pass_logs=pass_logs,
@@ -303,9 +327,9 @@ mb_slide_off_ag.setup(
     SlideOff_Dir="+",
     cry_cmds=[
         "Motor[L1].JogSpeed={Home_Vel}",
-        "#{L7}j:{SlideOff_Dir}6274",
+        "#{L7}j:{SlideOff_Dir}{SlideOff_Dist}",
         "Motor[L7].CapturePos=1",
-        "#{L1}j:{SlideOff_Dir}400",
+        "#{L1}j:{SlideOff_Dir}{SlideOff_Dist}",
     ],
     pass_conds=tls.check_off_limit_inpos_tl,
     pass_logs=pass_logs,
@@ -368,11 +392,16 @@ collision_stopper_ag.act_on_armed = reset_after_kill
 # set the forced sequence rules
 
 ma_init_checks_ag.poll_pr = lambda ag_self: ma_base_config_ag.is_done
+ma_init_on_lim_ag.poll_pr = lambda ag_self: ma_init_checks_ag.is_done
+ma_init_on_home_ag.poll_pr = lambda ag_self: ma_init_on_lim_ag.is_done
+
 mb_init_checks_ag.poll_pr = lambda ag_self: mb_base_config_ag.is_done
+mb_init_on_lim_ag.poll_pr = lambda ag_self: mb_init_checks_ag.is_done
+mb_init_on_home_ag.poll_pr = lambda ag_self: mb_init_on_lim_ag.is_done
 
 # setup the sequence default dependency (can be done automaticatlly)
 mb_start_pos_ag.poll_pr = (
-    lambda ag_self: ma_init_checks_ag.act.Var and mb_init_checks_ag.is_done
+    lambda ag_self: ma_init_on_home_ag.is_done and mb_init_on_home_ag.is_done
 )
 
 ma_start_pos_ag.poll_pr = lambda ag_self: mb_start_pos_ag.poll_pr(
@@ -401,7 +430,7 @@ mb_slide_off_ag.poll_pr = lambda ag_self: mb_on_lim_ag.is_done
 agents = ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01")
 
 ppra.ra.process_loop(
-    agents, 100000, cycle_period=Wracs_Period, debug=True,
+    agents, 100000, cycle_period=Script_Loop_Period, debug=True,
 )
 
 test_gpascii.close

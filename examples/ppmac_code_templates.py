@@ -93,6 +93,8 @@ jog_capt_rbk_tl = [
     "#{L1}j:{SlideOff_Dir}2000^{Trig_Offset} #{L7}j:10^0",
 ]
 
+cond_on_neg_lim = ["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"]
+
 check_off_limit_inpos_tl = [
     "Motor[L1].MinusLimit==0",
     "Motor[L1].PlusLimit==0",

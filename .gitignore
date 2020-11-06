@@ -62,3 +62,5 @@ examples/streamlit-test.py
 examples/data/ppmac_base_config.cfg.bak
 test2.gat
 test2.rep
+examples/data/config_compares.WinMerge
+ppmacTestScript.py
