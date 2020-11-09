@@ -64,3 +64,5 @@ test2.gat
 test2.rep
 examples/data/config_compares.WinMerge
 ppmacTestScript.py
+ppmac/gpascii_connect_.py
+ppmac/ppmac#1_connect_.py

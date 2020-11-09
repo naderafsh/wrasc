@@ -448,41 +448,48 @@ class PpmacToolMt:
 
     # basic send single string/command and wait and return single string/ reply
     # this doesn't check if you have tried to include multiple values using whitespace or "=" signs.. so don't
-    def send_receive(self, command, timeout):
+    def send_receive(self, command: str, timeout):
         # what if the connection was closed, or brick has crashed/turned off?
         # ie if receive back "ppmac#" then gpascii has closed..
         success = 0
         return_lines = [""]
+        command = command.rstrip("\n")
+        n_receive = command.count("\n") + 1
         if self.connected:
             # if self.ppmac_ssh !=None:
             print(f"sending: {command}")  # for debug
             self.ppmac_ssh.send(command + "\n")
+            time.sleep(0.01)
 
             buffer = ""
-
-            for i in range(10):  # try 10 times (?)
+            start_time = time.time()
+            elapsed_time = 0
+            while elapsed_time < timeout:
                 if self.ppmac_ssh.recv_ready():
                     buffer += self.ppmac_ssh.recv(4096).decode()
+                    response_count = buffer.count("\x06") + buffer.count("\n\n")
+                    buffer = buffer.replace("\n\n", "\n").replace("\x06", "")
                     return_lines = buffer.split("\r\n")
-                # print(buffer)
+                    n_receive -= response_count
 
-                # often there are  additional "\\x06" characters
-                # or empty lines that should be stripped out.
-                # especially with adding "\r\n" to the command
-                j = 0
-                while j < len(return_lines):
-                    if "\x06" in return_lines[j] or return_lines[j] == "":
-                        del return_lines[j]
-                    else:
-                        j += 1
+                    # often there are  additional "\\x06" characters
+                    # or empty lines that should be stripped out.
+                    # especially with adding "\r\n" to the command
+                    # j = 0
+                    # while j < len(return_lines):
+                    #     if "\x06" in return_lines[j] or return_lines[j] == "":
+                    #         del return_lines[j]
+                    #         # still count the line as a response
+                    #         n_receive -= 1
+                    #     else:
+                    #         j += 1
 
-                if (
-                    len(return_lines) >= 2 and "@" not in buffer
-                ):  # what happens with other lengths/lines?
-                    success = 1
-                    break
+                    if len(return_lines) > n_receive and "@" not in buffer:
+                        success = 1
+                        break
 
-                time.sleep(timeout)  # time.sleep(1)
+                time.sleep(0.05)
+                elapsed_time = time.time() - start_time
 
             if "@" in buffer:
                 success = 0
@@ -512,7 +519,7 @@ class PpmacToolMt:
 
             print(f"received:\n {buffer}\n")
             print(f"lines:\n {return_lines}\n")
-        return success, return_lines[1]
+        return success, return_lines
 
     def disconnect(self):
         print("disconnecting..")

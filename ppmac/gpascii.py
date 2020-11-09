@@ -14,9 +14,14 @@ class GpasciiClient(ClosingContextManager):
     """ Communicates with the powerPMAC Delta Tau via ssh."""
 
     # things that are in return from gpascii indicating something wrong
-    error_list = ["MOTOR NOT ACTIVE", "ILLEGAL CMD",
-                  "ILLEGAL PARAMETER", "NOT READY TO RUN",
-                  "PROGRAM RUNNING", "OUT OF RANGE NUMBER"]
+    error_list = [
+        "MOTOR NOT ACTIVE",
+        "ILLEGAL CMD",
+        "ILLEGAL PARAMETER",
+        "NOT READY TO RUN",
+        "PROGRAM RUNNING",
+        "OUT OF RANGE NUMBER",
+    ]
 
     def __init__(self, host, debug=False):
         # TODO: check valid host or host lookup
@@ -51,7 +56,7 @@ class GpasciiClient(ClosingContextManager):
         self.snum_received = 0
         self.save_time_per_cmd = 0  # [ms/cmd]
 
-    def connect(self, username='root', password='deltatau'):
+    def connect(self, username="root", password="deltatau"):
         """ssh to PowerBrick and run gpascii.
         returns True (success) if connected
         :param str username: default=root
@@ -66,22 +71,21 @@ class GpasciiClient(ClosingContextManager):
         self.d_print(f"Trying to connect to ppmac at {self.host} ..")
         try:
             self.paramiko_session = paramiko.SSHClient()
-            self.paramiko_session.set_missing_host_key_policy(
-                paramiko.AutoAddPolicy())
-            self.paramiko_session.connect(self.host,
-                                          username=username,
-                                          password=password)
+            self.paramiko_session.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.paramiko_session.connect(
+                self.host, username=username, password=password
+            )
             # see also paramiko timeout=self.TIMEOUT)
             self.d_print("Success, connected.")
             success = True
         except paramiko.AuthenticationException:
-            self.d_print("Authentication failed when connecting"
-                         f"to {self.host}")
+            self.d_print("Authentication failed when connecting" f"to {self.host}")
             sys.exit(1)
 
         # 8192 is paramiko default bufsize
-        self.stdin, self.stdout, self.stderr = \
-            self.paramiko_session.exec_command("gpascii -2", bufsize=8192)
+        self.stdin, self.stdout, self.stderr = self.paramiko_session.exec_command(
+            "gpascii -2", bufsize=8192
+        )
 
         self.d_print("sent gpascii.")
 
@@ -91,7 +95,7 @@ class GpasciiClient(ClosingContextManager):
         while rcv_buffer.find("Input\n") == -1:
             buffer_temp = self.nb_read()
             rcv_buffer += buffer_temp
-        self.d_print(f"received: \"{rcv_buffer}\"")
+        self.d_print(f'received: "{rcv_buffer}"')
 
         self.connected = True
         # TODO: check ppmac firmware version/CID
@@ -121,15 +125,15 @@ class GpasciiClient(ClosingContextManager):
         self.d_print(f"sending: {command}")
         # the following write is slow (~1ms) if not using buffered comms
         self.stdin.write(command + "\r\n")
-        self.stime_sum += (time.time() - st_time)*1000
+        self.stime_sum += (time.time() - st_time) * 1000
         self.snum_received += 1
-        self.save_time_per_cmd = self.stime_sum/self.snum_received
+        self.save_time_per_cmd = self.stime_sum / self.snum_received
 
         self.queue_in.append(command[:])
 
     # TODO: timeout that applies to individual receive.
     # TODO: version for just one token?
-    def receive_dict(self, num_replies='all', wait=False, timeout=0):
+    def receive_dict(self, num_replies="all", wait=False, timeout=0):
         """ receive a list of responses, typically used with send_list.
         this is a non-blocking receive,
         and will return all available replies in a list
@@ -142,7 +146,7 @@ class GpasciiClient(ClosingContextManager):
         overwritten by the last value.
         """
         response_dict = {}
-        if num_replies == 'all':
+        if num_replies == "all":
             response = self.receive(wait=wait, timeout=timeout)
             while response != []:
                 response_dict[response[0]] = response[1]
@@ -191,7 +195,7 @@ class GpasciiClient(ClosingContextManager):
         if ack_pos >= len(self.rcv_buffer):
             ack_pos = len(self.rcv_buffer)
 
-        self.rcv_buffer = self.rcv_buffer[ack_pos + 1:]
+        self.rcv_buffer = self.rcv_buffer[ack_pos + 1 :]
 
         response = response.replace("\r", "")
         response = response.replace("\n", "")
@@ -210,8 +214,9 @@ class GpasciiClient(ClosingContextManager):
             cmd_received = response.split("=")[0].lower()
             # assert cmd_received == intended_cmd, \
             #     f"sync error, {response.split('=')[0]} != {self.queue_in[0]}"
-            assert cmd_received == intended_cmd, \
-                f"sync error, {response.split('=')[0]} != {cmd_val}"
+            assert (
+                cmd_received == intended_cmd
+            ), f"sync error, {response.split('=')[0]} != {cmd_val}"
             # if it gets out of sync then it should stop, TODO flush/reconnect
         else:
             cmd_val = self.queue_in.popleft()[:]
@@ -225,9 +230,9 @@ class GpasciiClient(ClosingContextManager):
         if error is not False:
             success = 0
 
-        self.time_sum += (time.time() - st_time)*1000
+        self.time_sum += (time.time() - st_time) * 1000
         self.num_received += 1
-        self.ave_time_per_cmd = self.time_sum/self.num_received
+        self.ave_time_per_cmd = self.time_sum / self.num_received
 
         # TODO: need success/fail return?
         return cmd_response  # [cmd, response] pair
@@ -235,6 +240,11 @@ class GpasciiClient(ClosingContextManager):
     def validate_cmd(self, cmd):
 
         if cmd:
+
+            if "#0" in cmd:
+                # invalid commamnd engaging motor 0
+                return False, None
+
             return True, cmd
         else:
             return False, None
@@ -274,7 +284,7 @@ class GpasciiClient(ClosingContextManager):
             n_responses = cmd_count
         else:
             # caller indicated not to wait for responses.
-            n_responses = max(response_count, cmd_count) 
+            n_responses = max(response_count, cmd_count)
 
         # make sure it all gets sent before waiting for replies
         self.stdin.flush()
@@ -308,20 +318,20 @@ class GpasciiClient(ClosingContextManager):
         if ack_pos > len(self.rcv_buffer):
             ack_pos = len(self.rcv_buffer)
 
-        # \x06 is trailed by a \n is this a gpascii artifact? 
-        self.rcv_buffer = self.rcv_buffer[ack_pos + 1:]
+        # \x06 is trailed by a \n is this a gpascii artifact?
+        self.rcv_buffer = self.rcv_buffer[ack_pos + 1 :]
 
         cmd_val = self.queue_in.popleft()[:]
         # cmd_response = [self.queue_in[0], response]
         cmd_response = [cmd_val, response]
 
         # returns errors string if problem
-        error_returned, error_msg = self.stderr_error()  
-        wasSuccessful = (not error_returned)
+        error_returned, error_msg = self.stderr_error()
+        wasSuccessful = not error_returned
 
-        self.time_sum += (time.time() - st_time)*1000
+        self.time_sum += (time.time() - st_time) * 1000
         self.num_received += 1
-        self.ave_time_per_cmd = self.time_sum/self.num_received
+        self.ave_time_per_cmd = self.time_sum / self.num_received
 
         # DONE: YES need success/fail return added
         return cmd_response, wasSuccessful, error_msg  # [cmd, response] pair
@@ -338,7 +348,7 @@ class GpasciiClient(ClosingContextManager):
         # TODO add a return status for this
         stderr_buffer = self.nb_read_stderr()
         if stderr_buffer == "":
-            return False, ''
+            return False, ""
         for bad_response in self.error_list:
             # I removed this assert because it should be able to handle the
             # fault because \006 is received even if there is an error, but
@@ -385,8 +395,9 @@ class GpasciiClient(ClosingContextManager):
         self.stdin.flush()
 
         num_replies = len(cmd_list)
-        response_list = self.receive_dict(num_replies=num_replies,
-                                          wait=True, timeout=timeout)
+        response_list = self.receive_dict(
+            num_replies=num_replies, wait=True, timeout=timeout
+        )
         return response_list
 
     def send_receive(self, cmd, timeout=0):
@@ -428,7 +439,7 @@ class GpasciiClient(ClosingContextManager):
         # try to wait for it to actually finish;
         # start_time = time.time()
         # this waits forever for it to finish, and returns exit status.
-        # exit_status = self.stdout.channel.recv_exit_status() 
+        # exit_status = self.stdout.channel.recv_exit_status()
         # exit_ready = self.stdout.channel.exit_status_ready()
         # w hile not exit_ready and (time.time() - start_time) < 10:
         #    exit_ready = self.stdout.channel.exit_status_ready()

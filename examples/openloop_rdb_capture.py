@@ -83,13 +83,18 @@ utils.dump_obj(tst, path.join("autest_in", "sample_test" + ".yaml"))
 # Linux:  export PPMAC_TEST_IP="10.23.92.220"
 # Win sc: $env:PPMAC_TEST_IP="10.23.92.220"
 ppmac_test_IP = environ["PPMAC_TEST_IP"]
-test_gpascii = GpasciiClient(ppmac_test_IP)
+test_gpascii = ppra.PPMAC(ppmac_test_IP, backward=True)
 # it is possible to use multiple gpascii channels,
 # but we don't have a reason to do so, yet!
 test_gpascii_A = test_gpascii
 
 test_ppmac_A = PpmacToolMt(ppmac_test_IP)
 test_ppmac_A.connect()
+print(test_ppmac_A.send_receive("Test_error", 1))
+
+# test_gpascii_bala = GpasciiClient(ppmac_test_IP)
+# test_gpascii_bala.connect()
+# print(test_gpascii_bala.send_receive_raw("Test_error"))
 
 pp_glob_dict = ppra.load_pp_globals(PpGlobal_Filename)
 with open(BaseConfig_FileName) as f:

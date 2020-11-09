@@ -1,5 +1,8 @@
 from wrasc import reactive_agent as ra
 from ppmac import GpasciiClient
+from ppmac import PpmacToolMt
+
+
 from timeit import default_timer as timer
 from time import sleep
 import re
@@ -506,9 +509,79 @@ class Conditions(object):
         self.value = parse_stats(value)
 
 
+class PPMAC:
+    """Adapter for different gpascii drivers
+    only two base functions are provided:
+    connect 
+    send_receive_raw
+
+    Args:
+        backward (bool): sets the driver to use the ultra slow but backward compatible PpmacToolMt
+        host (str): url
+    """
+
+    def __init__(self, host, debug=False, backward=False) -> None:
+
+        self.host = host
+
+        if not backward:
+            self.gpascii = GpasciiClient(host=self.host, debug=debug)
+        else:
+            self.gpascii = PpmacToolMt(host=self.host)
+
+        self.connected = False
+
+    def connect(self):
+        self.gpascii.connect()
+        self.connected = self.gpascii.connected
+
+    def send_receive_raw(self, command, timeout=5):
+        if isinstance(self.gpascii, GpasciiClient):
+            return self.gpascii.send_receive_raw(cmds=command, timeout=timeout)
+
+        if isinstance(self.gpascii, PpmacToolMt):
+            # check if there are only one command
+            success, returned_lines = self.gpascii.send_receive(
+                command, timeout=timeout
+            )
+
+            if len(returned_lines) < 2:
+                # command had no response, e.g. #4$
+                returned_lines = returned_lines.append("")
+
+            if success:
+                error_msg = None
+                cmd_response = returned_lines
+                wasSuccessful = True
+            else:
+                error_msg = returned_lines[1]
+                cmd_response = [returned_lines[0], error_msg]
+                wasSuccessful = False
+
+            # wasSuccessful = True if success > 0 else False
+
+            return cmd_response, wasSuccessful, error_msg
+
+    # def send_receive_raw(self, cmds, response_count, timeout):
+    #     """
+
+    #     Args:
+    #         cmds ([type]): [description]
+    #         response_count ([type]): [description]
+    #         timeout ([type]): [description]
+
+    #     Raises:
+    #         TimeoutError: [description]
+    #         RuntimeError: [description]
+
+    #     Returns:
+    #         [type]: [description]
+    #     """
+
+
 class WrascPmacGate(ra.Agent):
 
-    ppmac = ...  # type : GpasciiClient
+    ppmac = ...  # type : PPMAC
 
     fetch_cmds = ...  # type : list
     fetch_cmd_parsed = ...  # type : str
@@ -527,7 +600,7 @@ class WrascPmacGate(ra.Agent):
 
     def __init__(
         self,
-        ppmac: GpasciiClient = None,
+        ppmac: PPMAC = None,
         fetch_cmds=[],
         pass_conds=[],
         cry_cmds=[],
@@ -549,25 +622,6 @@ class WrascPmacGate(ra.Agent):
         self.celeb_cmds = []
         self.pass_logs = []
 
-        if not ppmac or (not isinstance(ppmac, GpasciiClient)):
-            self.dmAgentType = "uninitialised"
-            return
-
-        self.ppmac = ppmac  # type : GpasciiClient
-
-        if not self.ppmac.connected:
-            self.ppmac.connect()
-            time_0 = timer()
-            time_out = 2  # sec
-
-            while not self.ppmac.connected:
-
-                if timer() < time_0 + time_out:
-                    raise TimeoutError(
-                        f"GpasciiClient connection timeout: {self.ppmac.host}"
-                    )
-                sleep(0.1)
-
         self.pass_logs_parsed = []
         self.csv_file_name = None
         # if you are here, then we have an agent to intialise
@@ -585,7 +639,25 @@ class WrascPmacGate(ra.Agent):
             csv_file_name=csv_file_name,
             **kwargs,
         )
+
+        if not ppmac or (not isinstance(ppmac, PPMAC)):
+            self.dmAgentType = "uninitialised"
+            return
+
         self.dmAgentType = "ppmac_wrasc"
+
+        self.ppmac = ppmac  # type : PPMAC
+
+        if not self.ppmac.connected:
+            self.ppmac.connect()
+            time_0 = timer()
+            time_out = 2  # sec
+
+            while not self.ppmac.connected:
+
+                if timer() < time_0 + time_out:
+                    raise TimeoutError(f"PPMAC connection timeout: {self.ppmac.host}")
+                sleep(0.1)
 
     def setup(
         self,
