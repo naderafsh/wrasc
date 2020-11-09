@@ -4,6 +4,8 @@ from wrasc import ppmac_ra as ppra
 # from wrasc import gpcom_wrap
 from os import environ, path
 from ppmac import GpasciiClient
+
+# from ppmac import PpmacToolMt
 import examples.ppmac_code_templates as tls
 import utils
 
@@ -60,14 +62,16 @@ BaseConfig_FileName = tst[
 
 # pp_glob_dictst data
 
-tst["Mot_A"] = ppra.axis(3).LVars()
+tst["Mot_A"] = ppra.axis(4).LVars()
+tst["Mot_A"]["Reverse_Enc"] = True
+
 tst["Mot_A"]["JogSpeed"] = 5
-tst["Mot_A"]["Reverse_Enc"] = False
+
 tst["Mot_A"]["Home_Vel"] = 1.28
 tst["Mot_A"]["SlideOff_Dist"] = 400
 # tst["Mot_A"]["csv_file_name"] = path.join("autest_out", "ma_capture.csv")
-tst["Mot_A"]["Start_Pos"] = 2000
-tst["Mot_A"]["Small_Step"] = 2000 / 10
+tst["Mot_A"]["Start_Pos"] = 10000
+tst["Mot_A"]["Small_Step"] = 10000 / 10
 
 # tst = utils.undump_obj("sample_test", "autest_in")
 print(tst)
@@ -82,6 +86,8 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 # it is possible to use multiple gpascii channels,
 # but we don't have a reason to do so, yet!
 test_gpascii_A = test_gpascii
+
+# test_ppmac_A = PpmacToolMt(ppmac_test_IP)
 
 pp_glob_dict = ppra.load_pp_globals(PpGlobal_Filename)
 with open(BaseConfig_FileName) as f:
@@ -278,11 +284,11 @@ collision_stopper_ag.setup(
     ongoing=True,
     pass_conds=[
         # clearance is low
-        f"#{tst['Mot_A']['L7']}p > #4p + {Collision_Clearance}",
+        f"#11p > #12p + {Collision_Clearance}",
         # and it is decreasing
-        f"Motor[{tst['Mot_A']['L1']}].ActVel - Motor[4].ActVel > 0",
+        f"Motor[3].ActVel - Motor[4].ActVel > 0",
     ],
-    celeb_cmds=[f"#{tst['Mot_A']['L1']},4 kill"],
+    celeb_cmds=[f"#3,4 kill"],
 )
 
 
