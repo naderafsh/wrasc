@@ -3,9 +3,10 @@ from wrasc import ppmac_ra as ppra
 
 # from wrasc import gpcom_wrap
 from os import environ, path
-from ppmac import GpasciiClient
 
-# from ppmac import PpmacToolMt
+from ppmac import GpasciiClient
+from ppmac import PpmacToolMt
+
 import examples.ppmac_code_templates as tls
 import utils
 
@@ -87,7 +88,8 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 # but we don't have a reason to do so, yet!
 test_gpascii_A = test_gpascii
 
-# test_ppmac_A = PpmacToolMt(ppmac_test_IP)
+test_ppmac_A = PpmacToolMt(ppmac_test_IP)
+test_ppmac_A.connect()
 
 pp_glob_dict = ppra.load_pp_globals(PpGlobal_Filename)
 with open(BaseConfig_FileName) as f:
