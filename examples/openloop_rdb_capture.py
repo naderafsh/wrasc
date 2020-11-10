@@ -52,7 +52,7 @@ Loop_Repeats = tst["Loop_Repeats"] = 30
 Collision_Clearance = tst["Collision_Clearance"] = 200000
 
 tst["Backward_Ppmac"] = True
-tst["Ppmac_IP"] = "10.23.92.220"
+Ppmac_IP = tst["Ppmac_IP"] = "10.23.92.220"
 
 PpGlobal_Filename = tst[
     "PpGlobal_Filename"
@@ -62,17 +62,27 @@ BaseConfig_FileName = tst[
 ] = r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
 
 # pp_glob_dictst data
+axis_n = 3
+tst["Mot_A"] = ppra.axis(axis_n).LVars()
+tst["Mot_A"]["Reverse_Enc"] = axis_n == 4
+Micro_Steps = tst["Mot_A"]["Micro_Steps"] = 32
+Full_Steps_per_Rev = tst["Mot_A"]["Full_Steps_per_Rev"] = 200
+Overall_Pitch = tst["Mot_A"]["Overall_Pitch"] = 0.5
+Enc_Res = tst["Mot_A"]["Enc_Res"] = 50e-6  # mm
+Step_Res = tst["Mot_A"]["Step_Res"] = (
+    1 / Full_Steps_per_Rev / Micro_Steps * Overall_Pitch
+)
 
-tst["Mot_A"] = ppra.axis(4).LVars()
-tst["Mot_A"]["Reverse_Enc"] = True
+tst["Mot_A"]["Home_Offset"] = 0
 
 tst["Mot_A"]["JogSpeed"] = 5
 
 tst["Mot_A"]["Home_Vel"] = 1.28
-tst["Mot_A"]["SlideOff_Dist"] = 400
+tst["Mot_A"]["Slide_Off_Steps"] = 400
 # tst["Mot_A"]["csv_file_name"] = path.join("autest_out", "ma_capture.csv")
-tst["Mot_A"]["Start_Pos"] = 10000
-tst["Mot_A"]["Small_Step"] = 10000 / 10
+tst["Mot_A"]["Attack_Pos_Enc"] = 2 / Enc_Res
+tst["Mot_A"]["Small_Jog_Steps"] = 10000 / 10
+
 
 # tst = utils.undump_obj("sample_test", "autest_in")
 # print(tst)
@@ -82,8 +92,8 @@ utils.dump_obj(tst, path.join("autest_in", "sample_test" + ".yaml"))
 # test code
 # Linux:  export PPMAC_TEST_IP="10.23.92.220"
 # Win sc: $env:PPMAC_TEST_IP="10.23.92.220"
-ppmac_test_IP = environ["PPMAC_TEST_IP"]
-test_gpascii = ppra.PPMAC(ppmac_test_IP, backward=tst["Backward_Ppmac"])
+# environ["PPMAC_TEST_IP"]
+test_gpascii = ppra.PPMAC(Ppmac_IP, backward=tst["Backward_Ppmac"])
 # it is possible to use multiple gpascii channels,
 # but we don't have a reason to do so, yet!
 test_gpascii_A = test_gpascii
@@ -139,9 +149,21 @@ rev_enc_cmd = (
     else ["PowerBrick[L2].Chan[L3].EncCtrl=3"]
 )
 
-ma_init_checks_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
-ma_init_checks_ag.setup(
-    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd, celeb_cmds=["%100"], **tst["Mot_A"],
+current_stat = ppra.expand_globals(["full_current(L1)=1"], pp_glob_dict, **tst["Mot_A"])
+
+ma_init_checks_ag = ppra.WrascPmacGate(
+    verbose=_VERBOSE_,
+    ppmac=test_gpascii_A,
+    **tst["Mot_A"],
+    cry_cmds=tls.config_rdb_lmt
+    + rev_enc_cmd
+    + current_stat
+    + ["Motor[L1].HomeOffset = {Home_Offset}"],
+    celeb_cmds=[
+        "%100",
+        "#{L1}hm j/",  # puposedly fail homing to clear homed flag
+        "#{L7}kill",
+    ],
 )
 # -------------------------------------------------------------------
 # 0.1 - Move to MLIM
@@ -153,8 +175,11 @@ ma_init_on_lim_ag = ppra.WrascPmacGate(
     **tst["Mot_A"],
     pass_conds=tls.cond_on_neg_lim,
     cry_cmds="#{L1}j-",
-    celeb_cmds="#{L1}hm j/",  # stop incomplete to leave HomeComplete at 0
+    celeb_cmds=["#{L7}kill"],  # stop incomplete to leave HomeComplete at 0
 )
+
+ma_init_on_lim_ag.dwell_aoa = 2
+ma_init_on_lim_ag.act_on_armed = dwell_aoa
 
 # 0.2 - Home sliding off the limit
 
@@ -162,10 +187,14 @@ ma_init_on_home_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii_A,
     **tst["Mot_A"],
-    pass_conds=["Motor[L1].HomeComplete==1", "Motor[L1].InPos==1"],
+    pass_conds=["Motor[L1].HomeComplete==1"] + tls.check_off_limit_inpos_tl,
     cry_cmds="#{L1}hm",
-    celeb_cmds="#{L7}kill",
+    celeb_cmds=["#{L7}kill"],
 )
+
+ma_init_on_home_ag.dwell_aoa = 2
+ma_init_on_home_ag.act_on_armed = dwell_aoa
+
 
 # Only once (first time) the main axis is homed
 # and companion axis is killed, reset companion axis readback to zero
@@ -181,7 +210,7 @@ ma_hmz_companion_ag = ppra.WrascPmacGate(
         "#{L1}p < 5",
     ],
     cry_cmds=[],
-    celeb_cmds="#{L7} hmz j/",
+    celeb_cmds="#{L7}hmz",
     # this is a one off. therefore, if it fails, then th loop gets stock
     ongoing=False,
 )
@@ -190,13 +219,15 @@ ma_hmz_companion_ag = ppra.WrascPmacGate(
 # 1 - settle at staring point
 
 # -------- motor A
-Start_Pos = tst["Mot_A"]["Start_Pos"]
 ma_start_pos_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii_A,
     **tst["Mot_A"],
-    pass_conds=["#{L1}p > {Start_Pos} + {Small_Step}"],
-    cry_cmds=[],  # ["#{L1}jog=={Start_Pos}"],
+    pass_conds=[
+        "Motor[L1].InPos==1",
+        "#{L7}p > {Attack_Pos_Enc} + Motor[L7].CapturedPos",
+    ],
+    cry_cmds=[],
     celeb_cmds=[],
 )
 ma_start_pos_ag.cry_retries = 1
@@ -210,11 +241,10 @@ ma_step_until_ag = ppra.WrascPmacGate(
     **tst["Mot_A"],
     pass_conds=[
         "Motor[L1].InPos==1",
-        "#{L1}p < {Start_Pos} + {Small_Step} ",
-        # "Motor[3].PrevDesPos-Motor[3].HomePos > {Small_Step}",
+        "#{L7}p < {Attack_Pos_Enc} + Motor[L7].CapturedPos",
     ],
     cry_cmds=[],
-    celeb_cmds=["#{L1}jog:{Small_Step}"],
+    celeb_cmds=["#{L1}jog:{Small_Jog_Steps}"],
     pass_logs=pass_logs,
     csv_file_name=path.join("autest_out", "ma_small_steps.csv"),
 )
@@ -229,8 +259,9 @@ ma_step_until_ag.poll_pr = (
 # 2 - Move onto the minus limit and wait to stabilise,
 
 # -------- motor A
-ma_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
-ma_on_lim_ag.setup(
+ma_on_lim_ag = ppra.WrascPmacGate(
+    verbose=_VERBOSE_,
+    ppmac=test_gpascii_A,
     **tst["Mot_A"],
     cry_cmds=["#{L1}jog-"],
     pass_conds=tls.cond_on_neg_lim,
@@ -251,9 +282,9 @@ ma_slide_off_ag.setup(
     SlideOff_Dir="+",
     cry_cmds=[
         "Motor[L1].JogSpeed={Home_Vel}",
-        "#{L7}j:{SlideOff_Dir}{SlideOff_Dist}",
+        "#{L7}j:{SlideOff_Dir}{Slide_Off_Steps}",
         "Motor[L7].CapturePos=1",
-        "#{L1}j:{SlideOff_Dir}{SlideOff_Dist}",
+        "#{L1}j:{SlideOff_Dir}{Slide_Off_Steps}",
     ],
     pass_conds=tls.check_off_limit_inpos_tl,
     # resetting the changes in this action
@@ -318,7 +349,9 @@ ma_init_on_lim_ag.poll_pr = lambda ag_self: ma_init_checks_ag.is_done
 ma_init_on_home_ag.poll_pr = lambda ag_self: ma_init_on_lim_ag.is_done
 
 # setup the sequence default dependency (can be done automaticatlly)
-ma_start_pos_ag.poll_pr = lambda ag_self: ma_init_on_home_ag.is_done
+ma_start_pos_ag.poll_pr = (
+    lambda ag_self: ma_init_on_home_ag.is_done and ma_hmz_companion_ag.is_done
+)
 
 ma_on_lim_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
 ma_slide_off_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done

@@ -7,10 +7,15 @@ JogSpeed = 1.28
 
 motor = ppra.axis(8)
 
+Attack_Pos_Enc = 9898
+
 # this sets LVars into locals...
 locals().update(motor.LVars())
 
 test_stats = {
+    "#{L7}p > {Attack_Pos_Enc} + Motor[L7].CapturedPos": [
+        "#16p > 9898 + Motor[16].CapturedPos"
+    ],
     "Motor[{L1}].JogSpeed={JogSpeed}": ["Motor[8].JogSpeed=1.28"],
     "Motor[L7].EncType=Gate[L2].Blaaa": ["Motor[16].EncType=Gate[1].Blaaa"],
     "#{L1}j=#{L3}p - 100": ["#8j=#3p - 100"],

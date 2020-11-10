@@ -112,6 +112,7 @@ log_capt_rbk_tl = [
     "Motor[L1].IdCmd",
     # position references
     "Motor[L1].HomePos",
+    "Motor[L1].HomeOffset",
     "Motor[L7].HomePos",
     # Check these for errors
     "Motor[L7].CapturePos",

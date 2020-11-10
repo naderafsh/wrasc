@@ -274,7 +274,8 @@ def expand_pmac_stats(stats, **vars):
 
     stats_out = []
     # expand the stats one by one
-    for stat in stats:
+    for stat_org in stats:
+        stat = stat_org
         assert isinstance(stat, str)
 
         # ignore line comments
@@ -290,7 +291,11 @@ def expand_pmac_stats(stats, **vars):
 
         for lvar in set(l_vars):
             # put L# in curley brackets
-            stat = stat.replace(lvar, "{" + lvar + "}")
+            stat = (
+                stat.replace(lvar, "{" + lvar + "}")
+                .replace("{{", "{")
+                .replace("}}", "}")
+            )
 
         # if any(str_ in stat for str_ in ["{{", "}}"]):
         #     raise RuntimeError(f"invalid stat syntax {stat}")
@@ -300,9 +305,11 @@ def expand_pmac_stats(stats, **vars):
         except KeyError:
             # if there is a macro which can't be found in vars, then leave it!
             stats_out.append(stat)
+            print(f"unresolved parameters; left for late binding:\n{stat_org}")
         except ValueError:
             # this is probably more serious...
             stats_out.append(stat)
+            print(f"ValueError in parameters; ignored!:\n{stat_org}")
         except IndexError:
             # this is probably a syntax issue,
             # e.g. something other than a variable is passed as a macro
@@ -310,6 +317,7 @@ def expand_pmac_stats(stats, **vars):
             # raise RuntimeError(f"syntax error in ppmac statement: {stat} ")
 
             stats_out.append(stat)
+            print(f"IndexError in parameters; ignored!:\n{stat_org}")
 
     return stats_out
 
