@@ -536,22 +536,49 @@ class PPMAC:
         self.connected = self.gpascii.connected
 
     def send_receive_raw(self, command, timeout=5):
+        """send and then receive a series of commands in sequence
+
+        Args:
+            command (str): \n separated string of commands
+            timeout (int, optional): [description]. Defaults to 5.
+
+        Returns:
+            [type]: [description]
+        """
+
+        command = re.sub("([\n][\n]+)", "\n", command.rstrip("\n").lstrip("\n"))
+        n_to_receive = command.count("\n") + 1 if command else 0
+
+        # skip if command is empty
+        if not n_to_receive:
+            # construct an empty respond here and leave
+            return ["", ""], True, ""
+
         if isinstance(self.gpascii, GpasciiClient):
-            return self.gpascii.send_receive_raw(cmds=command, timeout=timeout)
+            tpl = self.gpascii.send_receive_raw(cmds=command, timeout=timeout)
+            return tpl
 
         if isinstance(self.gpascii, PpmacToolMt):
             # check if there are only one command
+
             success, returned_lines = self.gpascii.send_receive(
                 command, timeout=timeout
             )
 
             if len(returned_lines) < 2:
                 # command had no response, e.g. #4$
-                returned_lines = returned_lines.append("")
+                returned_lines.append("")
 
             if success:
                 error_msg = None
-                cmd_response = returned_lines
+
+                if n_to_receive == len(returned_lines):
+                    # in case of multiple commands,
+                    # commands are not included in the reponse
+                    # so zip them here
+                    cmd_response = list(zip(command.split("\n"), returned_lines))
+                else:
+                    cmd_response = returned_lines
                 wasSuccessful = True
             else:
                 error_msg = returned_lines[1]
@@ -562,21 +589,8 @@ class PPMAC:
 
             return cmd_response, wasSuccessful, error_msg
 
-    # def send_receive_raw(self, cmds, response_count, timeout):
-    #     """
-
-    #     Args:
-    #         cmds ([type]): [description]
-    #         response_count ([type]): [description]
-    #         timeout ([type]): [description]
-
-    #     Raises:
-    #         TimeoutError: [description]
-    #         RuntimeError: [description]
-
-    #     Returns:
-    #         [type]: [description]
-    #     """
+    def close(self):
+        self.gpascii.close()
 
 
 class WrascPmacGate(ra.Agent):
@@ -868,7 +882,10 @@ def done_condition_poi(ag_self: ra.Agent):
     all_stages_passed = ag_self.all_done_ag.is_done  # poll.Var
 
     if not all_stages_passed:
-        return None, "last stage not passed..."
+        return (
+            None,
+            f"awating {ag_self.all_done_ag.name}...{ag_self.repeats + 1} to go",
+        )
 
     for agname in ag_self.agent_list:
         ag = ag_self.agent_list[agname]["agent"]  # type : ra.Agent
@@ -881,7 +898,7 @@ def done_condition_poi(ag_self: ra.Agent):
         all_stages_passed = all_stages_passed and ag.is_done  # ag.poll.Var
 
     if not all_stages_passed:
-        return None, "prev stages not passed..."
+        return None, f"awaiting {ag.name} ...{ag_self.repeats + 1} to go"
 
     # all done. Now decide based on a counrter to either quit or reset and repeat
     if ag_self.repeats > 0:
@@ -907,7 +924,7 @@ def arm_to_quit_aov(ag_self: ra.Agent):
 
     if ag_self.poll.Var == True:
         # inform and log, confirm with other agents...
-        return ra.StateLogics.Armed, "out."
+        return ra.StateLogics.Armed, "Done and out."
     elif ag_self.poll.Var == False:
         # action: invalidate all agents in this subs-stage,
         # so the cycle restart

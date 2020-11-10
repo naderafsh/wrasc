@@ -4,9 +4,6 @@ from wrasc import ppmac_ra as ppra
 # from wrasc import gpcom_wrap
 from os import environ, path
 
-from ppmac import GpasciiClient
-from ppmac import PpmacToolMt
-
 import examples.ppmac_code_templates as tls
 import utils
 
@@ -40,19 +37,22 @@ Returns:
 def dwell_aoa(ag_self: ra.Agent):
 
     if ag_self.dwell_aoa and (ra.timer() - ag_self.poll.ChangeTime < ag_self.dwell_aoa):
-        return ra.StateLogics.Armed, f"dwelling by {ag_self.dwell_aoa}"
+        return ra.StateLogics.Armed, f"dwelling {ag_self.dwell_aoa}sec"
 
     return ra.StateLogics.Done, "user aoa done."
 
 
-_VERBOSE_ = 3
+_VERBOSE_ = 2
 
 
 tst = dict()
 
 Wrasc_Cycle_Period = tst["Wrasc_Cycle_Period"] = 0.25
-Loop_Repeats = tst["Loop_Repeats"] = 20
+Loop_Repeats = tst["Loop_Repeats"] = 30
 Collision_Clearance = tst["Collision_Clearance"] = 200000
+
+tst["Backward_Ppmac"] = True
+tst["Ppmac_IP"] = "10.23.92.220"
 
 PpGlobal_Filename = tst[
     "PpGlobal_Filename"
@@ -75,7 +75,7 @@ tst["Mot_A"]["Start_Pos"] = 10000
 tst["Mot_A"]["Small_Step"] = 10000 / 10
 
 # tst = utils.undump_obj("sample_test", "autest_in")
-print(tst)
+# print(tst)
 
 utils.dump_obj(tst, path.join("autest_in", "sample_test" + ".yaml"))
 
@@ -83,24 +83,17 @@ utils.dump_obj(tst, path.join("autest_in", "sample_test" + ".yaml"))
 # Linux:  export PPMAC_TEST_IP="10.23.92.220"
 # Win sc: $env:PPMAC_TEST_IP="10.23.92.220"
 ppmac_test_IP = environ["PPMAC_TEST_IP"]
-test_gpascii = ppra.PPMAC(ppmac_test_IP, backward=True)
+test_gpascii = ppra.PPMAC(ppmac_test_IP, backward=tst["Backward_Ppmac"])
 # it is possible to use multiple gpascii channels,
 # but we don't have a reason to do so, yet!
 test_gpascii_A = test_gpascii
-
-test_ppmac_A = PpmacToolMt(ppmac_test_IP)
-test_ppmac_A.connect()
-print(test_ppmac_A.send_receive("Test_error", 1))
-
-# test_gpascii_bala = GpasciiClient(ppmac_test_IP)
-# test_gpascii_bala.connect()
-# print(test_gpascii_bala.send_receive_raw("Test_error"))
 
 pp_glob_dict = ppra.load_pp_globals(PpGlobal_Filename)
 with open(BaseConfig_FileName) as f:
     base_config = f.read().splitlines()
     f.close
 
+# using a default set of parameters to log for each motor
 pass_logs = ppra.expand_globals(tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_A"])
 
 # verify strings are native ppmac
@@ -171,7 +164,7 @@ ma_init_on_home_ag = ppra.WrascPmacGate(
     **tst["Mot_A"],
     pass_conds=["Motor[L1].HomeComplete==1", "Motor[L1].InPos==1"],
     cry_cmds="#{L1}hm",
-    celeb_cmds="#{L7} kill",
+    celeb_cmds="#{L7}kill",
 )
 
 # Only once (first time) the main axis is homed
@@ -189,6 +182,7 @@ ma_hmz_companion_ag = ppra.WrascPmacGate(
     ],
     cry_cmds=[],
     celeb_cmds="#{L7} hmz j/",
+    # this is a one off. therefore, if it fails, then th loop gets stock
     ongoing=False,
 )
 
@@ -201,9 +195,7 @@ ma_start_pos_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii_A,
     **tst["Mot_A"],
-    pass_conds=tls.assert_pos_wf(
-        tst["Mot_A"]["L1"], Start_Pos, tst["Mot_A"]["Small_Step"]
-    )[0],
+    pass_conds=["#{L1}p > {Start_Pos} + {Small_Step}"],
     cry_cmds=[],  # ["#{L1}jog=={Start_Pos}"],
     celeb_cmds=[],
 )
@@ -279,7 +271,7 @@ ma_slide_off_ag.act_on_armed = dwell_aoa
 # now setup a sequencer
 inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
-inner_loop_ag.repeats = Loop_Repeats - 1
+inner_loop_ag.repeats = tst["Loop_Repeats"] - 1
 inner_loop_ag.all_done_ag = ma_slide_off_ag
 inner_loop_ag.reset_these_ags = [ma_start_pos_ag, ma_on_lim_ag, ma_slide_off_ag]
 # ----------------------------------------------------------------------
@@ -339,7 +331,7 @@ agents = ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01")
 
 
 ppra.ra.process_loop(
-    agents, 100000, cycle_period=Wrasc_Cycle_Period, debug=True,
+    agents, 100000, cycle_period=tst["Wrasc_Cycle_Period"], debug=True,
 )
 
 test_gpascii.close

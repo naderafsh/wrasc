@@ -19,6 +19,7 @@ import paramiko  # ssh library
 import sys, time
 import queue, threading
 import asyncio  # for commands to interface to caproto
+import regex as re
 
 
 # multi-threaded version of ppmac_tool
@@ -88,7 +89,7 @@ class PpmacToolMt:
                     self.ppmac_ssh_paramiko.connect(
                         self.host, username=username, password=password
                     )  # , timeout=self.TIMEOUT)
-                    print("Success, connected.")
+                    # print("Success, connected.")
                     success = 1
                     break
                 except paramiko.AuthenticationException:
@@ -122,7 +123,7 @@ class PpmacToolMt:
                 # print(buffer)
                 if self.ssh_prompt in buffer:
                     success = 1
-                    print("now at linux shell.")
+                    # print("now at linux shell.")
                     break
                 time.sleep(1)
 
@@ -133,7 +134,7 @@ class PpmacToolMt:
 
             self.ppmac_ssh.send("gpascii -2\n")
 
-            print("sent gpascii.")
+            # print("sent gpascii.")
 
             # wait for the "INPUT" end of line
             buffer = ""
@@ -144,7 +145,7 @@ class PpmacToolMt:
                 if self.gpascii_inp in buffer:
                     success = 1
                     self.connected = True
-                    print("gpascii started ok.")
+                    # print("gpascii started ok.")
                     break
                 time.sleep(1)
 
@@ -453,24 +454,29 @@ class PpmacToolMt:
         # ie if receive back "ppmac#" then gpascii has closed..
         success = 0
         return_lines = [""]
-        command = command.rstrip("\n")
-        n_receive = command.count("\n") + 1
+        command = command.rstrip("\n").lstrip("\n")
+        command = re.sub("([\n][\n]+)", "\n", command)
+        n_to_receive = command.count("\n") + 1
         if self.connected:
             # if self.ppmac_ssh !=None:
-            print(f"sending: {command}")  # for debug
+            # print(f"sending: {command}")  # for debug
             self.ppmac_ssh.send(command + "\n")
+            # allow the receive buffer to reset
             time.sleep(0.01)
 
-            buffer = ""
+            buffer = ""  # type: str
             start_time = time.time()
             elapsed_time = 0
             while elapsed_time < timeout:
                 if self.ppmac_ssh.recv_ready():
                     buffer += self.ppmac_ssh.recv(4096).decode()
-                    response_count = buffer.count("\x06") + buffer.count("\n\n")
-                    buffer = buffer.replace("\n\n", "\n").replace("\x06", "")
-                    return_lines = buffer.split("\r\n")
-                    n_receive -= response_count
+                    response_count = buffer.count("\x06")  # + buffer.count("\n\n")
+                    buffer = buffer.replace("\x06", "")
+                    buffer = re.sub("([\r\n]+)", "\n", buffer)
+                    return_lines = buffer.rstrip("\n").split("\n")
+                    n_to_receive -= response_count
+
+                    assert "" not in return_lines
 
                     # often there are  additional "\\x06" characters
                     # or empty lines that should be stripped out.
@@ -484,11 +490,11 @@ class PpmacToolMt:
                     #     else:
                     #         j += 1
 
-                    if len(return_lines) > n_receive and "@" not in buffer:
+                    if n_to_receive < 1 and "@" not in buffer:
                         success = 1
                         break
 
-                time.sleep(0.05)
+                time.sleep(0.005)
                 elapsed_time = time.time() - start_time
 
             if "@" in buffer:
@@ -517,8 +523,8 @@ class PpmacToolMt:
             # motor[2].JogSpee
             # stdin: 12:1: error  # 21: ILLEGAL PARAMETER: motor[2].JogSpee
 
-            print(f"received:\n {buffer}\n")
-            print(f"lines:\n {return_lines}\n")
+            # print(f"received:\n {buffer}\n")
+            # print(f"{elapsed_time}s {return_lines}")
         return success, return_lines
 
     def disconnect(self):
