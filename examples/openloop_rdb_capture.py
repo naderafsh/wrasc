@@ -29,85 +29,89 @@ The Agents then can e forced to an "anchored sequence"
 
 The aoa method of the Agent can be used to implement additional functions which execute after pass condition is met.
 
+pass condition statements and commands use native ppmac statements and macros in {} format
+macros evaluate and expand at setup time to ppmac native statements which will be evaluated real time 
+
+
 Returns:
     stats_inscription]
 """
 
 
-def dwell_aoa(ag_self: ra.Agent):
-
-    if ag_self.dwell_aoa and (ra.timer() - ag_self.poll.ChangeTime < ag_self.dwell_aoa):
-        return ra.StateLogics.Armed, f"dwelling {ag_self.dwell_aoa}sec"
-
-    return ra.StateLogics.Done, "user aoa done."
-
-
-_VERBOSE_ = 2
+_VERBOSE_ = 1
 
 
 tst = dict()
 
-Wrasc_Cycle_Period = tst["Wrasc_Cycle_Period"] = 0.25
-Loop_Repeats = tst["Loop_Repeats"] = 30
-Collision_Clearance = tst["Collision_Clearance"] = 200000
+wrasc_cycle_period = tst["wrasc_cycle_period"] = 0.25
+loop_repeats = tst["loop_repeats"] = 3
+tst["clearance_egu"] = 10
 
-tst["Backward_Ppmac"] = True
+tst["ppmac_is_backward"] = False
 Ppmac_IP = tst["Ppmac_IP"] = "10.23.92.220"
 
-PpGlobal_Filename = tst[
+tst[
     "PpGlobal_Filename"
 ] = r"C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym"
-BaseConfig_FileName = tst[
+tst[
     "BaseConfig_FileName"
 ] = r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
 
 # pp_glob_dictst data
 axis_n = 3
 tst["Mot_A"] = ppra.axis(axis_n).LVars()
-tst["Mot_A"]["Reverse_Enc"] = axis_n == 4
-Micro_Steps = tst["Mot_A"]["Micro_Steps"] = 32
-Full_Steps_per_Rev = tst["Mot_A"]["Full_Steps_per_Rev"] = 200
-Overall_Pitch = tst["Mot_A"]["Overall_Pitch"] = 0.5
-Enc_Res = tst["Mot_A"]["Enc_Res"] = 50e-6  # mm
-Step_Res = tst["Mot_A"]["Step_Res"] = (
-    1 / Full_Steps_per_Rev / Micro_Steps * Overall_Pitch
-)
+tst["Mot_A"]["encoder_reversed"] = axis_n == 4
+micro_steps = tst["Mot_A"]["micro_steps"] = 32
+fullsteps_per_rev = tst["Mot_A"]["fullsteps_per_rev"] = 200
+overall_egu_per_rev = tst["Mot_A"]["overall_egu_per_rev"] = 2
+enc_res = tst["Mot_A"]["enc_res"] = 50e-6  # mm
 
-tst["Mot_A"]["Home_Offset"] = 0
+tst["Mot_A"]["HomeOffset_EGU"] = tst["Mot_A"]["overall_egu_per_rev"] / 20
+tst["Mot_A"]["JogSpeed_EGU"] = tst["Mot_A"]["overall_egu_per_rev"]
 
-tst["Mot_A"]["JogSpeed"] = 5
-
-tst["Mot_A"]["Home_Vel"] = 1.28
-tst["Mot_A"]["Slide_Off_Steps"] = 400
+tst["Mot_A"]["HomeVel_EGU"] = tst["Mot_A"]["JogSpeed_EGU"] / 5
+tst["Mot_A"]["slideoff_steps"] = 400
 # tst["Mot_A"]["csv_file_name"] = path.join("autest_out", "ma_capture.csv")
-tst["Mot_A"]["Attack_Pos_Enc"] = 2 / Enc_Res
-tst["Mot_A"]["Small_Jog_Steps"] = 10000 / 10
+tst["Mot_A"]["attackpos_egu"] = 2
+tst["Mot_A"]["smalljog_egu"] = 0.5
 
+tst["Mot_A"]["jog_settle_time"] = 1  # sec
+tst["Mot_A"]["limit_settle_time"] = 2  # sec
 
 # tst = utils.undump_obj("sample_test", "autest_in")
 # print(tst)
 
 utils.dump_obj(tst, path.join("autest_in", "sample_test" + ".yaml"))
 
+step_res = tst["Mot_A"]["step_res"] = (
+    1 / fullsteps_per_rev / micro_steps * overall_egu_per_rev
+)
+tst["Mot_A"]["smalljog_steps"] = tst["Mot_A"]["smalljog_egu"] / step_res
+tst["Mot_A"]["HomeOffset"] = tst["Mot_A"]["HomeOffset_EGU"] / step_res
+tst["Mot_A"]["attackpos_enc"] = (
+    tst["Mot_A"]["attackpos_egu"] + tst["Mot_A"]["HomeOffset_EGU"]
+) / enc_res
+tst["Mot_A"]["JogSpeed"] = tst["Mot_A"]["JogSpeed_EGU"] / step_res / 1000
+tst["Mot_A"]["HomeVel"] = tst["Mot_A"]["HomeVel_EGU"] / step_res / 1000
+clearance_enc = tst["clearance_egu"] / enc_res
+
+
 # test code
 # Linux:  export PPMAC_TEST_IP="10.23.92.220"
 # Win sc: $env:PPMAC_TEST_IP="10.23.92.220"
 # environ["PPMAC_TEST_IP"]
-test_gpascii = ppra.PPMAC(Ppmac_IP, backward=tst["Backward_Ppmac"])
+test_gpascii = ppra.PPMAC(Ppmac_IP, backward=tst["ppmac_is_backward"])
 # it is possible to use multiple gpascii channels,
 # but we don't have a reason to do so, yet!
 test_gpascii_A = test_gpascii
 
-pp_glob_dict = ppra.load_pp_globals(PpGlobal_Filename)
-with open(BaseConfig_FileName) as f:
+pp_glob_dict = ppra.load_pp_globals(tst["PpGlobal_Filename"])
+with open(tst["BaseConfig_FileName"]) as f:
     base_config = f.read().splitlines()
     f.close
 
 # using a default set of parameters to log for each motor
 pass_logs = ppra.expand_globals(tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_A"])
-
-# verify strings are native ppmac
-# but commands use macros in {} (defined by ppra.macrostrs) which need to be evaluated realtime.
 
 
 # -------------------------------------------------------------------
@@ -145,7 +149,7 @@ ma_base_config_ag.cry_retries = 2
 
 rev_enc_cmd = (
     ["PowerBrick[L2].Chan[L3].EncCtrl=7"]
-    if tst["Mot_A"]["Reverse_Enc"]
+    if tst["Mot_A"]["encoder_reversed"]
     else ["PowerBrick[L2].Chan[L3].EncCtrl=3"]
 )
 
@@ -158,7 +162,7 @@ ma_init_checks_ag = ppra.WrascPmacGate(
     cry_cmds=tls.config_rdb_lmt
     + rev_enc_cmd
     + current_stat
-    + ["Motor[L1].HomeOffset = {Home_Offset}"],
+    + ["Motor[L1].HomeOffset = {HomeOffset}"],
     celeb_cmds=[
         "%100",
         "#{L1}hm j/",  # puposedly fail homing to clear homed flag
@@ -175,12 +179,10 @@ ma_init_on_lim_ag = ppra.WrascPmacGate(
     **tst["Mot_A"],
     pass_conds=tls.cond_on_neg_lim,
     cry_cmds="#{L1}j-",
-    celeb_cmds=["#{L7}kill"],  # stop incomplete to leave HomeComplete at 0
+    wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
+    celeb_cmds=["#{L1}j-", "#{L7}kill"],
 )
-
-ma_init_on_lim_ag.dwell_aoa = 2
-ma_init_on_lim_ag.act_on_armed = dwell_aoa
-
+# -------------------------------------------------------------------
 # 0.2 - Home sliding off the limit
 
 ma_init_on_home_ag = ppra.WrascPmacGate(
@@ -190,30 +192,28 @@ ma_init_on_home_ag = ppra.WrascPmacGate(
     pass_conds=["Motor[L1].HomeComplete==1"] + tls.check_off_limit_inpos_tl,
     cry_cmds="#{L1}hm",
     celeb_cmds=["#{L7}kill"],
+    wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
 )
 
-ma_init_on_home_ag.dwell_aoa = 2
-ma_init_on_home_ag.act_on_armed = dwell_aoa
-
-
+# -------------------------------------------------------------
 # Only once (first time) the main axis is homed
 # and companion axis is killed, reset companion axis readback to zero
 # This is not very accurate anyways.
-ma_hmz_companion_ag = ppra.WrascPmacGate(
-    verbose=_VERBOSE_,
-    ppmac=test_gpascii_A,
-    **tst["Mot_A"],
-    pass_conds=[
-        "Motor[L7].AmpEna==0",
-        "Motor[L1].HomeComplete==1",
-        "#{L1}p > -5",
-        "#{L1}p < 5",
-    ],
-    cry_cmds=[],
-    celeb_cmds="#{L7}hmz",
-    # this is a one off. therefore, if it fails, then th loop gets stock
-    ongoing=False,
-)
+# ma_hmz_companion_ag = ppra.WrascPmacGate(
+#     verbose=_VERBOSE_,
+#     ppmac=test_gpascii_A,
+#     **tst["Mot_A"],
+#     pass_conds=[
+#         "Motor[L7].AmpEna==0",
+#         "Motor[L1].HomeComplete==1",
+#         "#{L1}p > -5",
+#         "#{L1}p < 5",
+#     ],
+#     cry_cmds=[],
+#     celeb_cmds="#{L7}hmz",
+#     # this is a one off. therefore, if it fails, then th loop gets stock
+#     ongoing=False,
+# )
 
 # -------------------------------------------------------------------
 # 1 - settle at staring point
@@ -225,12 +225,11 @@ ma_start_pos_ag = ppra.WrascPmacGate(
     **tst["Mot_A"],
     pass_conds=[
         "Motor[L1].InPos==1",
-        "#{L7}p > {Attack_Pos_Enc} + Motor[L7].CapturedPos",
+        "#{L7}p > {attackpos_enc} + Motor[L7].CapturedPos",
     ],
-    cry_cmds=[],
-    celeb_cmds=[],
 )
 ma_start_pos_ag.cry_retries = 1
+
 # -------------------------------------------------------------------
 # 1.1 - Step towards the staring point
 
@@ -239,21 +238,20 @@ ma_step_until_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii_A,
     **tst["Mot_A"],
-    pass_conds=[
-        "Motor[L1].InPos==1",
-        "#{L7}p < {Attack_Pos_Enc} + Motor[L7].CapturedPos",
-    ],
+    pass_conds="Motor[L1].InPos==1",
     cry_cmds=[],
-    celeb_cmds=["#{L1}jog:{Small_Jog_Steps}"],
     pass_logs=pass_logs,
     csv_file_name=path.join("autest_out", "ma_small_steps.csv"),
+    celeb_cmds=["#{L1}jog:{smalljog_steps}"],
+    wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
 )
 # this agent will not be put on old when passed:
 ma_step_until_ag.ongoing = True
 # step until will be active everytime the ma_start_pos_ag is not on hold
 ma_step_until_ag.poll_pr = (
-    lambda ag_self: not ma_start_pos_ag.inhibited and not ma_start_pos_ag.is_done
+    lambda ag_self: not ma_start_pos_ag.inhibited and ma_start_pos_ag.poll.Var is False
 )
+
 
 # -------------------------------------------------------------------
 # 2 - Move onto the minus limit and wait to stabilise,
@@ -263,46 +261,52 @@ ma_on_lim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii_A,
     **tst["Mot_A"],
-    cry_cmds=["#{L1}jog-"],
+    #
     pass_conds=tls.cond_on_neg_lim,
-    celeb_cmds=["#{L7}kill"],
+    cry_cmds=["#{L1}jog-"],
+    #
     pass_logs=pass_logs,
     csv_file_name=path.join("autest_out", "ma_slide_on.csv"),
+    #
+    celeb_cmds=["#{L7}kill"],
+    wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
 )
 
-ma_on_lim_ag.dwell_aoa = 2
-ma_on_lim_ag.act_on_armed = dwell_aoa
 # -------------------------------------------------------------------
 # 3 - Arm Capture and slide off for capturing the falling edge
 
 # -------- motor A
-ma_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
-ma_slide_off_ag.setup(
+ma_slide_off_ag = ppra.WrascPmacGate(
+    verbose=_VERBOSE_,
+    ppmac=test_gpascii_A,
     **tst["Mot_A"],
-    SlideOff_Dir="+",
-    cry_cmds=[
-        "Motor[L1].JogSpeed={Home_Vel}",
-        "#{L7}j:{SlideOff_Dir}{Slide_Off_Steps}",
-        "Motor[L7].CapturePos=1",
-        "#{L1}j:{SlideOff_Dir}{Slide_Off_Steps}",
-    ],
+    #
     pass_conds=tls.check_off_limit_inpos_tl,
+    cry_cmds=[
+        "Motor[L1].JogSpeed={HomeVel}",
+        "#{L7}j:{SlideOff_Dir}{slideoff_steps}",
+        "Motor[L7].CapturePos=1",
+        # "#{L1}j:{SlideOff_Dir}{slideoff_steps}",
+        "#{L1}j=0",
+    ],
+    SlideOff_Dir="+",
+    #
+    pass_logs=pass_logs,
+    csv_file_name=path.join("autest_out", "ma_slide_off.csv"),
     # resetting the changes in this action
     celeb_cmds=[
         "Motor[L1].JogSpeed={JogSpeed}",
         "PowerBrick[L2].Chan[L3].CountError=0",
     ],
-    pass_logs=pass_logs,
-    csv_file_name=path.join("autest_out", "ma_slide_off.csv"),
+    wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
 )
-ma_slide_off_ag.dwell_aoa = 0.01
-ma_slide_off_ag.act_on_armed = dwell_aoa
+
 # -------------------------------------------------------------------
 
 # now setup a sequencer
 inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
-inner_loop_ag.repeats = tst["Loop_Repeats"] - 1
+inner_loop_ag.repeats = tst["loop_repeats"] - 1
 inner_loop_ag.all_done_ag = ma_slide_off_ag
 inner_loop_ag.reset_these_ags = [ma_start_pos_ag, ma_on_lim_ag, ma_slide_off_ag]
 # ----------------------------------------------------------------------
@@ -314,7 +318,7 @@ collision_stopper_ag.setup(
     ongoing=True,
     pass_conds=[
         # clearance is low
-        f"#11p > #12p + {Collision_Clearance}",
+        f"#11p > #12p + {clearance_enc}",
         # and it is decreasing
         f"Motor[3].ActVel - Motor[4].ActVel > 0",
     ],
@@ -350,8 +354,8 @@ ma_init_on_home_ag.poll_pr = lambda ag_self: ma_init_on_lim_ag.is_done
 
 # setup the sequence default dependency (can be done automaticatlly)
 ma_start_pos_ag.poll_pr = (
-    lambda ag_self: ma_init_on_home_ag.is_done and ma_hmz_companion_ag.is_done
-)
+    lambda ag_self: ma_init_on_home_ag.is_done
+)  # and ma_hmz_companion_ag.is_done
 
 ma_on_lim_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
 ma_slide_off_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
@@ -364,7 +368,7 @@ agents = ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01")
 
 
 ppra.ra.process_loop(
-    agents, 100000, cycle_period=tst["Wrasc_Cycle_Period"], debug=True,
+    agents, 100000, cycle_period=tst["wrasc_cycle_period"], debug=True,
 )
 
 test_gpascii.close

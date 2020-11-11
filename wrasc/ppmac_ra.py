@@ -10,6 +10,7 @@ from io import StringIO
 import csv
 import os
 import time
+import utils
 
 """ ppmac basic agent. 
 This agent checks (watches) a list of statement conditions, 
@@ -438,17 +439,18 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
             ag_self.act.hold(for_cycles=1, reset_var=False)
 
         # now log a line to cvs if there is one
-        if ag_self.csvcontent and ag_self.csv_file_name:
+        if ag_self.csvcontent and ag_self.csv_file_stamped:
 
-            with open(ag_self.csv_file_name, "w+") as file:
+            with open(ag_self.csv_file_stamped, "w+") as file:
                 file.write(ag_self.csvcontent)
+
             ag_self.cvscontent = None
 
         # arm if an arm action is defined (by user). Otherwise Done
         if ag_self.act_on_armed:
             return (
                 ra.StateLogics.Armed,
-                f"passing to external aoa: {resp}",
+                f"armed: {resp}",
             )
 
         return ra.StateLogics.Done, f"celeb: {resp}"
@@ -478,6 +480,22 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
             )
 
         return ra.StateLogics.Idle, "No action"
+
+
+def ppwr_act_on_armed(ag_self: ra.Agent):
+
+    if ag_self.wait_after_celeb:
+        elapsed = ra.timer() - ag_self.poll.ChangeTime
+        if elapsed < ag_self.wait_after_celeb:
+            return (
+                ra.StateLogics.Armed,
+                f"waiting {elapsed}/{ag_self.wait_after_celeb}sec",
+            )
+        else:
+            # need to flick a deliberate change here, to reset the timer!
+            ag_self.poll.ChangeTime = ra.timer()
+
+    return ra.StateLogics.Done, "wait aoa done."
 
 
 def ppwr_act_on_invalid(ag_self: ra.Agent):
@@ -634,6 +652,7 @@ class WrascPmacGate(ra.Agent):
     ):
         self.pp_globals = {}
 
+        self.wait_after_celeb = None
         self.ongoing = False
 
         self.fetch_cmds = []
@@ -652,6 +671,7 @@ class WrascPmacGate(ra.Agent):
             poll_in=ppwr_poll_in,
             act_on_invalid=ppwr_act_on_invalid,
             act_on_valid=ppwr_act_on_valid,
+            act_on_armed=ppwr_act_on_armed,
             fetch_cmds=fetch_cmds,
             pass_conds=pass_conds,
             cry_cmds=cry_cmds,
@@ -691,6 +711,7 @@ class WrascPmacGate(ra.Agent):
         pass_logs=None,
         csv_file_name=None,
         ongoing=None,
+        wait_after_celeb=None,
         **kwargs,
     ):
 
@@ -701,6 +722,10 @@ class WrascPmacGate(ra.Agent):
         In case of [] or None or not passing, cry_cmds will be used to create verification condition:
          "=" in statements will be replaced by "==". non-statement commands will be ignored.
         """
+
+        if wait_after_celeb:
+            self.wait_after_celeb = wait_after_celeb
+
         if ongoing:
             self.ongoing = ongoing
 
@@ -754,19 +779,22 @@ class WrascPmacGate(ra.Agent):
 
             if self.csvcontent and self.csv_file_name:
 
+                # time_stamp the filename
+                self.csv_file_stamped = utils.time_stamp(self.csv_file_name)
+
                 # if file exists, make a backup of the existing file
                 # do not leave until the file doesn't exist!
                 n_copies = 0
-                while os.path.exists(self.csv_file_name):
-                    name, ext = os.path.splitext(self.csv_file_name)
+                while os.path.exists(self.csv_file_stamped):
+                    name, ext = os.path.splitext(self.csv_file_stamped)
                     modif_time_str = time.strftime(
                         "%y%m%d_%H%M",
-                        time.localtime(os.path.getmtime(self.csv_file_name)),
+                        time.localtime(os.path.getmtime(self.csv_file_stamped)),
                     )
                     n_copies_str = f"({n_copies})" if n_copies > 0 else ""
                     try:
                         os.rename(
-                            self.csv_file_name,
+                            self.csv_file_stamped,
                             f"{name}_{modif_time_str}{n_copies_str}{ext}",
                         )
                     except FileExistsError:
@@ -774,7 +802,7 @@ class WrascPmacGate(ra.Agent):
                         # TODO or you need to be too fussy and break the execution for this?
                         n_copies += 1
 
-                open(self.csv_file_name, "w+")
+                open(self.csv_file_stamped, "w+")
         else:
             # self.log_vals = []
             self.csvcontent = None

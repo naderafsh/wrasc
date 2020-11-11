@@ -108,3 +108,11 @@ def dump_class_objs(yourself, obj_str_list, yaml_dump_path):
         ):
             list_of_errors.append(obj_str)
     return list_of_errors
+
+
+def time_stamp(filename):
+
+    create_time_str = time.strftime("%y%m%d_%H%M", time.localtime())
+    name, ext = path.splitext(filename)
+
+    return f"{name}_{create_time_str}{ext}"
