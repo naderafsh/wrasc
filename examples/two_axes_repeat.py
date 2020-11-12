@@ -48,11 +48,11 @@ Wrasc_Cycle_Period = tst["Wrasc_Cycle_Period"] = 0.25
 Loop_Repeats = tst["Loop_Repeats"] = 20
 Collision_Clearance = tst["Collision_Clearance"] = 200000
 
-PpGlobal_Filename = tst[
-    "PpGlobal_Filename"
+ppglobal_fname = tst[
+    "ppglobal_fname"
 ] = r"C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym"
-BaseConfig_FileName = tst[
-    "BaseConfig_FileName"
+baseconfig_fname = tst[
+    "baseconfig_fname"
 ] = r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
 
 # pp_glob_dictst data
@@ -98,8 +98,8 @@ test_gpascii = GpasciiClient(ppmac_test_IP)
 test_gpascii_A = test_gpascii
 test_gpascii_B = test_gpascii
 
-pp_glob_dict = ppra.load_pp_globals(PpGlobal_Filename)
-with open(BaseConfig_FileName) as f:
+pp_glob_dict = ppra.load_pp_globals(ppglobal_fname)
+with open(baseconfig_fname) as f:
     base_config = f.read().splitlines()
     f.close
 

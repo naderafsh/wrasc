@@ -38,7 +38,7 @@ Returns:
 """
 
 
-_VERBOSE_ = 1
+_VERBOSE_ = 3
 
 
 tst = dict()
@@ -48,13 +48,13 @@ loop_repeats = tst["loop_repeats"] = 3
 tst["clearance_egu"] = 10
 
 tst["ppmac_is_backward"] = False
-Ppmac_IP = tst["Ppmac_IP"] = "10.23.92.220"
+ppmac_hostname = tst["ppmac_hostname"] = "10.23.92.220"
 
 tst[
-    "PpGlobal_Filename"
+    "ppglobal_fname"
 ] = r"C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym"
 tst[
-    "BaseConfig_FileName"
+    "baseconfig_fname"
 ] = r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
 
 # pp_glob_dictst data
@@ -95,50 +95,49 @@ tst["Mot_A"]["JogSpeed"] = tst["Mot_A"]["JogSpeed_EGU"] / step_res / 1000
 tst["Mot_A"]["HomeVel"] = tst["Mot_A"]["HomeVel_EGU"] / step_res / 1000
 clearance_enc = tst["clearance_egu"] / enc_res
 
-
-# test code
-# Linux:  export PPMAC_TEST_IP="10.23.92.220"
-# Win sc: $env:PPMAC_TEST_IP="10.23.92.220"
-# environ["PPMAC_TEST_IP"]
-test_gpascii = ppra.PPMAC(Ppmac_IP, backward=tst["ppmac_is_backward"])
+test_gpascii = ppra.PPMAC(ppmac_hostname, backward=tst["ppmac_is_backward"])
 # it is possible to use multiple gpascii channels,
 # but we don't have a reason to do so, yet!
 test_gpascii_A = test_gpascii
 
-pp_glob_dict = ppra.load_pp_globals(tst["PpGlobal_Filename"])
-with open(tst["BaseConfig_FileName"]) as f:
+pp_glob_dict = ppra.load_pp_globals(tst["ppglobal_fname"])
+with open(tst["baseconfig_fname"]) as f:
     base_config = f.read().splitlines()
     f.close
 
 # using a default set of parameters to log for each motor
 pass_logs = ppra.expand_globals(tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_A"])
 
-
-# -------------------------------------------------------------------
-# this one monitors the two motors for collision.
-# stops both motors when collision zone condition is met.
-# celeb cpommands may kill or stop the engaged motors, or
-# may disable a coordinate system altogether.
-# this shall not go to Done. After pass, it shall continue checking.
+################################################################################################################
+# folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #
+################################################################################################################
 
 # -1 - check configuration
 
 # -------- motor A
 config_stats = ppra.expand_globals(base_config, pp_glob_dict, **tst["Mot_A"])
 
-ma_base_config_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
-ma_base_config_ag.setup(
-    **tst["Mot_A"], cry_cmds=config_stats, celeb_cmds="#{L1}$",
+ma_base_config_ag = ppra.WrascPmacGate(
+    verbose=_VERBOSE_,
+    ppmac=test_gpascii_A,
+    **tst["Mot_A"],
+    # validate / download calibration
+    cry_cmds=config_stats,
+    cry_retries=2,
+    # phase the motor
+    celeb_cmds="#{L1}$",
 )
 
 # to ensure plc type config files take effect,
-# the config needs to be applied more than one time.
+# the config may need to be applied more than one time.
 # this is because some statements refer to other settings
 # which may change during download.
+# Also, some native ppmac settings will AUTOMATICALLY change others
+# e.g. EncType resets many related variables to their "type" default
 #
 # TODO : maybe consider downloading only the non-matching criteria...
-# and trry as many times? or skip exact statements if they are lready verified?
-ma_base_config_ag.cry_retries = 2
+# and try as many times? or skip exact statements if they are lready verified?
+
 # -------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -228,7 +227,6 @@ ma_start_pos_ag = ppra.WrascPmacGate(
         "#{L7}p > {attackpos_enc} + Motor[L7].CapturedPos",
     ],
 )
-ma_start_pos_ag.cry_retries = 1
 
 # -------------------------------------------------------------------
 # 1.1 - Step towards the staring point
@@ -345,6 +343,11 @@ def reset_after_kill(ag_self: ra.Agent):
 
 collision_stopper_ag.act_on_armed = reset_after_kill
 
+
+################################################################################################################
+# folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #
+################################################################################################################
+
 # -------------------------------------------------------------------
 # set the forced sequence rules
 
@@ -361,14 +364,59 @@ ma_on_lim_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
 ma_slide_off_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
 # ----------------------------------------------------------------------
 
-# =====================================================================================
+################################################################################################################
+# folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #
+################################################################################################################
 agents = ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01")
 
 # TODO confirm with user before starting the test
 
+################################################################################################################
+# folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #
+################################################################################################################
 
 ppra.ra.process_loop(
     agents, 100000, cycle_period=tst["wrasc_cycle_period"], debug=True,
 )
 
 test_gpascii.close
+
+# now load the csv file and plot
+
+filename = ma_step_until_ag.csv_file_stamped
+print(f"here is the log file: {filename}")
+
+import matplotlib.pyplot as plt
+
+from numpy import genfromtxt
+from os import path
+import pandas as pd
+
+# Enc_Res = 50e-6  # mm/count
+# Step_Res = 0.0003125  # mm/ustep
+
+# filename = path.join("autest_out", "ma_small_steps_201111_2030.csv")
+
+df = pd.read_csv(filename)
+
+# test_data = genfromtxt(filename, delimiter=",")
+
+headers = list(df.columns)
+
+assert "CapturedPos" in headers[1]
+
+rdb_capt_mm = df["M11_CapturedPos"] * enc_res
+rdb_hash_mm = df["A11_HashPos"] * enc_res
+rdb_calib_mm = rdb_hash_mm - rdb_capt_mm - df["M3_HomeOffset"] * step_res
+step_hash_mm = df["A3_HashPos"] * step_res
+time_sec = df["Time"]
+
+plt.plot(time_sec, pd.concat([rdb_calib_mm, step_hash_mm], axis=1))
+plt.ylabel("rdb and steps [mm]")
+plt.xlabel("Time[sec]")
+plt.show()
+
+plt.plot(time_sec, rdb_calib_mm - step_hash_mm)
+plt.ylabel("rdb - steps [mm]")
+plt.xlabel("Time[sec]")
+plt.show()

@@ -382,24 +382,6 @@ def ppwr_poll_in(ag_self: ra.Agent):
                 # no need to check the rest of the conditions
                 return False, f"{statement}: {verify_text} "
 
-    # now that it is going to be True, calculate the logs.
-    # they will be saved to file via actions:
-
-    vals = [ag_self.poll.Time]
-    for condition in ag_self.pass_logs_parsed:
-        # acquire log statements
-        verify_text, statement = ag_self.check_cond(condition)
-
-        if verify_text:
-            # store eval(verify_text) in the logs dict:
-            if isPmacNumber(verify_text):
-                vals.append(eval(verify_text))
-            else:
-                # text value
-                vals.append(verify_text)
-    if len(vals) > 1:
-        ag_self.csvcontent += ",".join(map(str, vals)) + "\n"
-
     return True, "True"
 
 
@@ -438,22 +420,9 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
             # TODO Remove this test code
             ag_self.act.hold(for_cycles=1, reset_var=False)
 
-        # now log a line to cvs if there is one
-        if ag_self.csvcontent and ag_self.csv_file_stamped:
+        # ag_self.log_to_file()
 
-            with open(ag_self.csv_file_stamped, "w+") as file:
-                file.write(ag_self.csvcontent)
-
-            ag_self.cvscontent = None
-
-        # arm if an arm action is defined (by user). Otherwise Done
-        if ag_self.act_on_armed:
-            return (
-                ra.StateLogics.Armed,
-                f"armed: {resp}",
-            )
-
-        return ra.StateLogics.Done, f"celeb: {resp}"
+        return ra.StateLogics.Armed, f"armed: {resp}"
 
     elif ag_self.poll.Var == False:
 
@@ -489,12 +458,15 @@ def ppwr_act_on_armed(ag_self: ra.Agent):
         if elapsed < ag_self.wait_after_celeb:
             return (
                 ra.StateLogics.Armed,
-                f"waiting {elapsed}/{ag_self.wait_after_celeb}sec",
+                f"waiting {elapsed:.2f}/{ag_self.wait_after_celeb}sec",
             )
         else:
             # need to flick a deliberate change here, to reset the timer!
             ag_self.poll.ChangeTime = ra.timer()
 
+    # log if tere is a log!
+    ag_self.acquire_log()
+    ag_self.log_to_file()
     return ra.StateLogics.Done, "wait aoa done."
 
 
@@ -648,6 +620,8 @@ class WrascPmacGate(ra.Agent):
         celeb_cmds=[],
         pass_logs=[],
         csv_file_name=None,
+        ongoing=False,
+        wait_after_celeb=None,
         **kwargs,
     ):
         self.pp_globals = {}
@@ -679,6 +653,8 @@ class WrascPmacGate(ra.Agent):
             celeb_cmds=celeb_cmds,
             pass_logs=pass_logs,
             csv_file_name=csv_file_name,
+            ongoing=ongoing,
+            wait_after_celeb=wait_after_celeb,
             **kwargs,
         )
 
@@ -897,6 +873,39 @@ class WrascPmacGate(ra.Agent):
             return True
         else:
             return False
+
+    def acquire_log(self):
+        """
+        acquire pass_log_parsed conditions and put them in cvscontent
+        """
+
+        # now that it is going to be True, calculate the logs.
+        # they will be saved to file via actions:
+
+        vals = [self.poll.Time]
+        for condition in self.pass_logs_parsed:
+            # acquire log statements
+            verify_text, statement = self.check_cond(condition)
+
+            if verify_text:
+                # store eval(verify_text) in the logs dict:
+                if isPmacNumber(verify_text):
+                    vals.append(eval(verify_text))
+                else:
+                    # text value
+                    vals.append(verify_text)
+        if len(vals) > 1:
+            self.csvcontent += ",".join(map(str, vals)) + "\n"
+
+    def log_to_file(self):
+        # now log a line to cvs if there is one
+        if self.csvcontent and self.csv_file_stamped:
+
+            with open(self.csv_file_stamped, "w+") as file:
+                file.write(self.csvcontent)
+                file.close
+
+            self.cvscontent = None
 
 
 # -------------------------------------------------------------------
