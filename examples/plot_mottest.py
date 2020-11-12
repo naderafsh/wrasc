@@ -7,7 +7,7 @@ import pandas as pd
 Enc_Res = 50e-6  # mm/count
 Step_Res = 0.0003125  # mm/ustep
 
-filename = path.join("autest_out", "ma_small_steps_201111_2030.csv")
+filename = path.join("autest_out", "ma_small_steps_201112_1537.csv")
 
 
 df = pd.read_csv(filename)

@@ -18,7 +18,17 @@ and triggeres (acts) a triple list of actions. accordingly.
 
 These have no retry or timeout mechanism internally. Some specialised agents can take care of progress and deadlocks
 
+Sequence:
 
+poll, 
+    do cry_cmds for recry times
+
+if pass, 
+    do celeb_cmds
+then skip one cycle 
+then skip more cycles until wait_after_celeb, if defined
+then log if defined
+and set id_done.
 
 """
 
@@ -334,12 +344,17 @@ def ppwr_poll_in(ag_self: ra.Agent):
         return ra.StateLogics.Valid, "no checks"
 
     # acquire left sides
+    # TODO optimise this routine by:
+    # sending all stats at once
+    # and then processing the conditions one by one ... ?
+
+    ag_self.receive_cond_parsed(ag_self.pass_conds_parsed)
 
     for condition in ag_self.pass_conds_parsed:
         # take templates and variables from inside the
         # condisions and verify the statement
 
-        verify_text, statement = ag_self.check_cond(condition)
+        verify_text, statement = ag_self.check_cond_offline(condition)
 
         if verify_text is None:
             # major comms error, do not try the rest of the conditions?
@@ -603,7 +618,7 @@ class WrascPmacGate(ra.Agent):
     celeb_cmd_parsed = ...  # type : str
 
     pass_cond = ...  # type : list
-    pass_cond_parsed = ...  # type : list
+    pass_conds_parsed = ...  # type : list
 
     pass_logs = ...  # type : list
     pass_logs_parsed = ...  # type : list
@@ -859,6 +874,87 @@ class WrascPmacGate(ra.Agent):
         # ppmac is a non case sensitive system, so return comparison statement in lower case
         return evaluated_stat.lower(), statement
 
+    def receive_cond_parsed(self, stats_parsed):
+        """
+        receive all stats in pass_conds_parsed
+        """
+
+        # extract all stats
+
+        var_list_of_lists = [elem[1] for elem in stats_parsed]
+        l_vars_list = [item for sublist in var_list_of_lists for item in sublist]
+
+        # make a \n separate string
+        l_vars_str = "\n".join(str(e) for e in l_vars_list)
+        # send all stats
+        tpl = self.ppmac.send_receive_raw(l_vars_str)
+        if not tpl[1]:
+            return False
+
+        ret_list = tpl[0][1].split("\n")
+
+        # extract the values
+        ret_key_val = [
+            stat.strip("\n").strip(" ").strip("'").split("=") for stat in ret_list
+        ]
+
+        self.ppmac_key_val = dict()
+
+        for i, keyval in enumerate(ret_key_val):
+            # if len(keyval) == 2:
+            #     self.ppmac_key_val[keyval[0].lower()] = {
+            #         "val": keyval[1],
+            #         "time": time.time(),
+            #     }
+            if len(l_vars_list) > i:
+                self.ppmac_key_val[l_vars_list[i].lower()] = {
+                    "val": keyval[-1],
+                    "time": time.time(),
+                }
+
+    def check_cond_offline(self, condition):
+        """
+        Evaluates the condition/statement, by fethcing all macro variables from ppmac
+
+        Args:
+            condition ([type]): [description]
+
+        Returns:
+            (str,str): evaluated_stat.lower(), statement
+        """
+
+        evaluated_stat, l_vars, statement = condition
+
+        for i, l_var in enumerate(l_vars):
+            # # acquire the variable to check
+            # tpl = self.ppmac.send_receive_raw(l_var)
+
+            # if not tpl[1]:
+            #     self.poll.Var = None
+            #     evaluated_stat = "Err"
+            #     break
+            #     # return ra.StateLogics.Invalid, "comms error"
+
+            # ret_val = tpl[0][1].strip("\n").strip(" ").strip("'").split("=")[-1]
+
+            l_var = l_var.lower()  # type: str
+            if l_var not in self.ppmac_key_val:
+                print("gooz")
+
+            ret_val = self.ppmac_key_val[l_var]["val"]
+
+            if not isPmacNumber(ret_val):
+                # treat this return as string
+                ret_val = f"'{ret_val}'"
+
+            elif ret_val.startswith("$"):
+                # check if it is a valid hex
+                ret_val = str(int(ret_val[1:], 16))
+
+            evaluated_stat = evaluated_stat.replace(f"_var_{i}", ret_val)
+        # ppmac is a non case sensitive system, so return comparison statement in lower case
+        return evaluated_stat.lower(), statement
+
     @property
     def is_done(self):
 
@@ -883,9 +979,10 @@ class WrascPmacGate(ra.Agent):
         # they will be saved to file via actions:
 
         vals = [self.poll.Time]
+        self.receive_cond_parsed(self.pass_logs_parsed)
         for condition in self.pass_logs_parsed:
             # acquire log statements
-            verify_text, statement = self.check_cond(condition)
+            verify_text, statement = self.check_cond_offline(condition)
 
             if verify_text:
                 # store eval(verify_text) in the logs dict:

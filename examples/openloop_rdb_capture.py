@@ -38,7 +38,7 @@ Returns:
 """
 
 
-_VERBOSE_ = 3
+_VERBOSE_ = 2
 
 
 tst = dict()
@@ -58,7 +58,7 @@ tst[
 ] = r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
 
 # pp_glob_dictst data
-axis_n = 3
+axis_n = 4
 tst["Mot_A"] = ppra.axis(axis_n).LVars()
 tst["Mot_A"]["encoder_reversed"] = axis_n == 4
 micro_steps = tst["Mot_A"]["micro_steps"] = 32
@@ -404,11 +404,11 @@ df = pd.read_csv(filename)
 headers = list(df.columns)
 
 assert "CapturedPos" in headers[1]
-
-rdb_capt_mm = df["M11_CapturedPos"] * enc_res
-rdb_hash_mm = df["A11_HashPos"] * enc_res
-rdb_calib_mm = rdb_hash_mm - rdb_capt_mm - df["M3_HomeOffset"] * step_res
-step_hash_mm = df["A3_HashPos"] * step_res
+# TODO fix this hardcoded headers!
+rdb_capt_mm = df["M12_CapturedPos"] * enc_res
+rdb_hash_mm = df["A12_HashPos"] * enc_res
+rdb_calib_mm = rdb_hash_mm - rdb_capt_mm - df["M4_HomeOffset"] * step_res
+step_hash_mm = df["A4_HashPos"] * step_res
 time_sec = df["Time"]
 
 plt.plot(time_sec, pd.concat([rdb_calib_mm, step_hash_mm], axis=1))

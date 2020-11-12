@@ -323,7 +323,7 @@ class GpasciiClient(ClosingContextManager):
 
         cmd_val = self.queue_in.popleft()[:]
         # cmd_response = [self.queue_in[0], response]
-        cmd_response = [cmd_val, response]
+        cmd_response = [cmd_val, response.replace("\006\n", "")]
 
         # returns errors string if problem
         error_returned, error_msg = self.stderr_error()
