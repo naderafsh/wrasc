@@ -114,9 +114,6 @@ log_capt_rbk_tl = [
     "Motor[L1].HomePos",
     "Motor[L1].HomeOffset",
     "Motor[L7].HomePos",
-    # these will give ILLEGAL CMD errors
-    "{enc_res}",
-    "{step_res}",
     # Check these for errors
     "Motor[L7].CapturePos",
     "Motor[L1].TriggerNotFound",

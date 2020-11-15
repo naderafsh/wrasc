@@ -72,7 +72,7 @@ tst["Mot_A"]["JogSpeed_EGU"] = tst["Mot_A"]["overall_egu_per_rev"]
 tst["Mot_A"]["HomeVel_EGU"] = tst["Mot_A"]["JogSpeed_EGU"] / 5
 tst["Mot_A"]["slideoff_steps"] = 400
 # tst["Mot_A"]["csv_file_name"] = path.join("autest_out", "ma_capture.csv")
-tst["Mot_A"]["attackpos_egu"] = 2
+tst["Mot_A"]["attackpos_egu"] = 100
 tst["Mot_A"]["smalljog_egu"] = 0.5
 
 tst["Mot_A"]["jog_settle_time"] = 1  # sec
@@ -407,18 +407,25 @@ gen_headers = dict()
 assert "CapturedPos" in headers[1]
 
 for header in headers:
-    gen_headers[header.split("_")[-1]] = header
+    axis_index = header.split("_")[0][1:]
+    if axis_index.isdigit():
+        axis_prefix = "cc" if int(axis_index) > 8 else "xx"
+    else:
+        axis_prefix = ""
+    # companion
 
+    gen_ = axis_prefix + header.split("_")[-1]
+    gen_headers[gen_] = header
 
 # TODO fix this hardcoded headers!
-rdb_capt_mm = df[gen_headers["CapturedPos"]] * enc_res
-rdb_hash_mm = df[gen_headers["HashPos"]] * enc_res
-rdb_calib_mm = rdb_hash_mm - rdb_capt_mm - df[gen_headers["HomeOffset"]] * step_res
-step_hash_mm = df[gen_headers["HashPos"]] * step_res
+rdb_capt_mm = df[gen_headers["ccCapturedPos"]] * enc_res
+rdb_hash_mm = df[gen_headers["ccHashPos"]] * enc_res
+rdb_calib_mm = rdb_hash_mm - rdb_capt_mm - df[gen_headers["xxHomeOffset"]] * step_res
+step_hash_mm = df[gen_headers["xxHashPos"]] * step_res
 time_sec = df["Time"]
 
 plt.plot(time_sec, concat([rdb_calib_mm, step_hash_mm], axis=1))
-plt.title("{:}".format(gen_headers["HashPos"]))
+plt.title("{} and {}".format(gen_headers["ccHashPos"], gen_headers["xxHashPos"]))
 plt.ylabel(f"readback and steps [mm]")
 plt.xlabel("Time[sec]")
 plt.show()
