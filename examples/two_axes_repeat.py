@@ -120,7 +120,7 @@ mb_start_pos_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_B,)
 ma_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
 mb_on_lim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_B,)
 
-ma_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
+ma_slide_off_mlim_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_A,)
 mb_slide_off_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii_B,)
 
 collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
@@ -172,7 +172,7 @@ rev_enc_cmd = (
 
 
 ma_init_checks_ag.setup(
-    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd, celeb_cmds=["%100"], **tst["Mot_A"],
+    cry_cmds=tls.config_rdb_capt + rev_enc_cmd, celeb_cmds=["%100"], **tst["Mot_A"],
 )
 
 # -------- motor B
@@ -187,7 +187,7 @@ rev_enc_cmd = (
 )
 
 mb_init_checks_ag.setup(
-    cry_cmds=tls.config_rdb_lmt + rev_enc_cmd, celeb_cmds=["%100"], **tst["Mot_B"],
+    cry_cmds=tls.config_rdb_capt + rev_enc_cmd, celeb_cmds=["%100"], **tst["Mot_B"],
 )
 # -------------------------------------------------------------------
 # 0.1 - Move to MLIM
@@ -198,7 +198,7 @@ ma_init_on_lim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii_A,
     **tst["Mot_A"],
-    pass_conds=tls.cond_on_neg_lim,
+    pass_conds=tls.is_on_mlim_inpos,
     cry_cmds="#{L1}j-",
     celeb_cmds="#{L1}hm j/",  # stop incomplete to leave HomeComplete at 0
 )
@@ -222,7 +222,7 @@ mb_init_on_lim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_gpascii_A,
     **tst["Mot_B"],
-    pass_conds=tls.cond_on_neg_lim,
+    pass_conds=tls.is_on_mlim_inpos,
     cry_cmds="#{L1}j-",
     celeb_cmds="#{L1}hm j/",  # stop incomplete to leave HomeComplete at 0
 )
@@ -270,7 +270,7 @@ mb_start_pos_ag.setup(
 ma_on_lim_ag.setup(
     **tst["Mot_A"],
     cry_cmds=["#{L1}jog-"],
-    pass_conds=tls.cond_on_neg_lim,
+    pass_conds=tls.is_on_mlim_inpos,
     celeb_cmds=["#{L7}kill"],
 )
 
@@ -292,9 +292,9 @@ mb_on_lim_ag.act_on_armed = dwell_aoa
 # 3 - Arm Capture and slide off for capturing the falling edge
 
 # -------- motor A
-pass_logs = ppra.expand_globals(tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_A"])
+pass_logs = ppra.expand_globals(tls.log_main_n_companion, pp_glob_dict, **tst["Mot_A"])
 
-ma_slide_off_ag.setup(
+ma_slide_off_mlim_ag.setup(
     **tst["Mot_A"],
     SlideOff_Dir="+",
     cry_cmds=[
@@ -303,7 +303,7 @@ ma_slide_off_ag.setup(
         "Motor[L7].CapturePos=1",
         "#{L1}j:{SlideOff_Dir}{SlideOff_Dist}",
     ],
-    pass_conds=tls.check_off_limit_inpos_tl,
+    pass_conds=tls.is_off_limit_inpos,
     pass_logs=pass_logs,
     # resetting the changes in this action
     celeb_cmds=[
@@ -311,12 +311,12 @@ ma_slide_off_ag.setup(
         "PowerBrick[L2].Chan[L3].CountError=0",
     ],
 )
-ma_slide_off_ag.dwell_aoa = 0.01
-ma_slide_off_ag.act_on_armed = dwell_aoa
+ma_slide_off_mlim_ag.dwell_aoa = 0.01
+ma_slide_off_mlim_ag.act_on_armed = dwell_aoa
 
 # -------- motor B
 
-pass_logs = ppra.expand_globals(tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_B"])
+pass_logs = ppra.expand_globals(tls.log_main_n_companion, pp_glob_dict, **tst["Mot_B"])
 
 mb_slide_off_ag.setup(
     **tst["Mot_B"],
@@ -327,7 +327,7 @@ mb_slide_off_ag.setup(
         "Motor[L7].CapturePos=1",
         "#{L1}j:{SlideOff_Dir}{SlideOff_Dist}",
     ],
-    pass_conds=tls.check_off_limit_inpos_tl,
+    pass_conds=tls.is_off_limit_inpos,
     pass_logs=pass_logs,
     # resetting the changes in this action
     celeb_cmds=[
@@ -345,7 +345,7 @@ inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
 inner_loop_ag.repeats = Loop_Repeats - 1
 inner_loop_ag.all_done_ag = mb_slide_off_ag
-inner_loop_ag.reset_these_ags = [ma_start_pos_ag, ma_on_lim_ag, ma_slide_off_ag]
+inner_loop_ag.reset_these_ags = [ma_start_pos_ag, ma_on_lim_ag, ma_slide_off_mlim_ag]
 inner_loop_ag.reset_these_ags += [mb_start_pos_ag, mb_on_lim_ag, mb_slide_off_ag]
 
 # ----------------------------------------------------------------------
@@ -411,7 +411,7 @@ ma_on_lim_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
 #
 mb_on_lim_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
 
-ma_slide_off_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
+ma_slide_off_mlim_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
 mb_slide_off_ag.poll_pr = lambda ag_self: mb_on_lim_ag.is_done
 
 # -------------------------------------------------------------------

@@ -40,7 +40,21 @@ import examples.ppmac_code_templates as tls
 from os import path
 
 
-class OLRDBCapt(ra.Device):
+class OL_RDB_Mlim(ra.Device):
+    """
+    base_config
+    then test_config configures for the rdb_capture test
+    the move on mlim and open loop home on mlim
+    then jog insteps using step_until and log, to attack position
+    then jog all the way back to mlim and log limit runover using slide_on and log
+    then slide_off and capture readback at limit flag fall and log
+
+    then repeat for n times
+
+    Args:
+        ra ([type]): [description]
+    """
+
     def __init__(self, tst=None, _VERBOSE_=1, **kwargs):
         self.dmDeviceType = "OLRDBCapt"
         super().__init__(**kwargs)
@@ -74,7 +88,7 @@ class OLRDBCapt(ra.Device):
 
         # using a default set of parameters to log for each motor
         default_pass_logs = ppra.expand_globals(
-            tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_A"]
+            tls.log_main_n_companion, pp_glob_dict, **tst["Mot_A"]
         )
 
         ################################################################################################################
@@ -125,7 +139,7 @@ class OLRDBCapt(ra.Device):
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
             **tst["Mot_A"],
-            cry_cmds=tls.config_rdb_lmt
+            cry_cmds=tls.config_rdb_capt
             + rev_enc_cmd
             + current_stat
             + ["Motor[L1].HomeOffset = {HomeOffset}"],
@@ -137,24 +151,24 @@ class OLRDBCapt(ra.Device):
         )
         # -------------------------------------------------------------------
         # 0.1 - Move to MLIM
-        self.ma_go_nlim_ag = ppra.WrascPmacGate(
+        self.ma_go_mlim_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
             **tst["Mot_A"],
-            pass_conds=tls.cond_on_neg_lim,
+            pass_conds=tls.is_on_mlim_inpos,
             cry_cmds="#{L1}j-",
             wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
             celeb_cmds=["#{L1}j-", "#{L7}kill"],
         )
         # -------------------------------------------------------------------
         # 0.2 - Home sliding off the limit
-        self.ma_home_ag = ppra.WrascPmacGate(
+        self.ma_home_on_mlim_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
             **tst["Mot_A"],
-            pass_conds=["Motor[L1].HomeComplete==1"] + tls.check_off_limit_inpos_tl,
+            pass_conds=["Motor[L1].HomeComplete==1"] + tls.is_off_limit_inpos,
             cry_cmds="#{L1}hm",
             celeb_cmds=["#{L7}kill"],
             wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
@@ -203,17 +217,17 @@ class OLRDBCapt(ra.Device):
         # 2 - Move onto the minus limit and wait to stabilise,
 
         # -------- motor A
-        self.ma_slide_on_ag = ppra.WrascPmacGate(
+        self.ma_slide_on_mlim_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
             **tst["Mot_A"],
             #
-            pass_conds=tls.cond_on_neg_lim,
+            pass_conds=tls.is_on_mlim_inpos,
             cry_cmds=["#{L1}jog-"],
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_slide_on.csv"),
+            csv_file_path=path.join("autest_out", "ma_slide_on_mlim.csv"),
             #
             celeb_cmds=["#{L7}kill"],
             wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
@@ -223,13 +237,13 @@ class OLRDBCapt(ra.Device):
         # 3 - Arm Capture and slide off for capturing the falling edge
 
         # -------- motor A
-        self.ma_slide_off_ag = ppra.WrascPmacGate(
+        self.ma_slide_off_mlim_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
             **tst["Mot_A"],
             #
-            pass_conds=tls.check_off_limit_inpos_tl,
+            pass_conds=tls.is_off_limit_inpos,
             cry_cmds=[
                 "Motor[L1].JogSpeed={HomeVel}",
                 "#{L7}j:{SlideOff_Dir}{slideoff_steps}",
@@ -240,7 +254,7 @@ class OLRDBCapt(ra.Device):
             SlideOff_Dir="+",
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_slide_off.csv"),
+            csv_file_path=path.join("autest_out", "ma_slide_off_mlim.csv"),
             # resetting the changes in this action
             celeb_cmds=[
                 "Motor[L1].JogSpeed={JogSpeed}",
@@ -255,11 +269,11 @@ class OLRDBCapt(ra.Device):
         self.inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
         # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
         self.inner_loop_ag.repeats = tst["loop_repeats"] - 1
-        self.inner_loop_ag.all_done_ag = self.ma_slide_off_ag
+        self.inner_loop_ag.all_done_ag = self.ma_slide_off_mlim_ag
         self.inner_loop_ag.reset_these_ags = [
             self.ma_start_pos_ag,
-            self.ma_slide_on_ag,
-            self.ma_slide_off_ag,
+            self.ma_slide_on_mlim_ag,
+            self.ma_slide_off_mlim_ag,
         ]
         # ----------------------------------------------------------------------
 
@@ -307,20 +321,376 @@ class OLRDBCapt(ra.Device):
         self.ma_test_config_ag.poll_pr = (
             lambda ag_self: ag_self.owner.ma_base_config_ag.is_done
         )
-        self.ma_go_nlim_ag.poll_pr = (
+        self.ma_go_mlim_ag.poll_pr = (
             lambda ag_self: ag_self.owner.ma_test_config_ag.is_done
         )
-        self.ma_home_ag.poll_pr = lambda ag_self: ag_self.owner.ma_go_nlim_ag.is_done
+        self.ma_home_on_mlim_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_go_mlim_ag.is_done
+        )
 
         # setup the sequence default dependency (can be done automaticatlly)
-        self.ma_start_pos_ag.poll_pr = lambda ag_self: ag_self.owner.ma_home_ag.is_done
+        self.ma_start_pos_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_home_on_mlim_ag.is_done
+        )
 
-        self.ma_slide_on_ag.poll_pr = (
+        self.ma_slide_on_mlim_ag.poll_pr = (
             lambda ag_self: ag_self.owner.ma_start_pos_ag.is_done
         )
-        self.ma_slide_off_ag.poll_pr = (
-            lambda ag_self: ag_self.owner.ma_slide_on_ag.is_done
+        self.ma_slide_off_mlim_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_slide_on_mlim_ag.is_done
         )
+        # ----------------------------------------------------------------------
+
+
+class OL_Rdb_Lim2Lim(ra.Device):
+    """
+    base_config
+    then test_config configures for the rdb_capture test
+    the move on mlim and open loop home on mlim
+    then jog insteps using step_until and log, to attack position
+    then jog all the way back to mlim and log limit runover using slide_on and log
+    then slide_off and capture readback at limit flag fall and log
+
+    then repeat for n times
+
+    Args:
+        ra ([type]): [description]
+    """
+
+    def __init__(self, tst=None, _VERBOSE_=1, **kwargs):
+        self.dmDeviceType = "OLRDBCapt"
+        super().__init__(**kwargs)
+
+        step_res = tst["Mot_A"]["step_res"] = (
+            1
+            / tst["Mot_A"]["fullsteps_per_rev"]
+            / tst["Mot_A"]["micro_steps"]
+            * tst["Mot_A"]["overall_egu_per_rev"]
+        )
+        enc_res = tst["Mot_A"]["encoder_res"]
+        tst["Mot_A"]["smalljog_steps"] = tst["Mot_A"]["smalljog_egu"] / step_res
+        tst["Mot_A"]["HomeOffset"] = tst["Mot_A"]["HomeOffset_EGU"] / step_res
+        tst["Mot_A"]["attackpos_enc"] = (
+            tst["Mot_A"]["attackpos_egu"] + tst["Mot_A"]["HomeOffset_EGU"]
+        ) / enc_res
+        tst["Mot_A"]["JogSpeed"] = tst["Mot_A"]["JogSpeed_EGU"] / step_res / 1000
+        tst["Mot_A"]["HomeVel"] = tst["Mot_A"]["HomeVel_EGU"] / step_res / 1000
+        clearance_enc = tst["clearance_egu"] / enc_res
+
+        self.test_ppmac = ppra.PPMAC(
+            tst["ppmac_hostname"], backward=tst["ppmac_is_backward"]
+        )
+        # it is possible to use multiple gpascii channels,
+        # but we don't have a reason to do so, yet!
+
+        pp_glob_dict = ppra.load_pp_globals(tst["ppglobal_fname"])
+        with open(tst["baseconfig_fname"]) as f:
+            base_config = f.read().splitlines()
+            f.close
+
+        # using a default set of parameters to log for each motor
+        default_pass_logs = ppra.expand_globals(
+            tls.log_main_n_companion, pp_glob_dict, **tst["Mot_A"]
+        )
+
+        ################################################################################################################
+        # folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #
+        ################################################################################################################
+
+        # -1 - check configuration
+
+        # -------- motor A
+        config_cmds = ppra.expand_globals(base_config, pp_glob_dict, **tst["Mot_A"])
+        self.ma_base_config_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            # validate / download calibration
+            cry_cmds=config_cmds,
+            cry_retries=2,
+            # phase the motor
+            celeb_cmds="#{L1}$",
+        )
+
+        # to ensure plc type config files take effect,
+        # the config may need to be applied more than one time.
+        # this is because some statements refer to other settings
+        # which may change during download.
+        # Also, some native ppmac settings will AUTOMATICALLY change others
+        # e.g. EncType resets many related variables to their "type" default
+        #
+        # TODO : maybe consider downloading only the non-matching criteria...
+        # and try as many times? or skip exact statements if they are lready verified?
+
+        # -------------------------------------------------------------------
+
+        # -------------------------------------------------------------------
+        # 0 - check configuration
+        # also add axis confix if there are deviations from baseConfig
+        rev_enc_cmd = (
+            ["PowerBrick[L2].Chan[L3].EncCtrl=7"]
+            if tst["Mot_A"]["encoder_reversed"]
+            else ["PowerBrick[L2].Chan[L3].EncCtrl=3"]
+        )
+        current_stat = ppra.expand_globals(
+            ["full_current(L1)=1"], pp_glob_dict, **tst["Mot_A"]
+        )
+        self.ma_test_config_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            cry_cmds=tls.config_rdb_capt
+            + rev_enc_cmd
+            + current_stat
+            + ["Motor[L1].HomeOffset = {HomeOffset}"],
+            celeb_cmds=[
+                "%100",
+                "#{L1}hm j/",  # puposedly fail homing to clear homed flag
+                "#{L7}kill",
+            ],
+        )
+        # -------------------------------------------------------------------
+        # 0.1 - Move to MLIM
+        self.ma_go_mlim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            pass_conds=tls.is_on_mlim_inpos,
+            cry_cmds="#{L1}j-",
+            wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
+            celeb_cmds=["#{L1}j-", "#{L7}kill"],
+        )
+        # -------------------------------------------------------------------
+        # 0.2 - Home sliding off the limit
+        self.ma_home_on_mlim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            pass_conds=["Motor[L1].HomeComplete==1"] + tls.is_off_limit_inpos,
+            cry_cmds="#{L1}hm",
+            celeb_cmds=["#{L7}kill"],
+            wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
+        )
+        # -------------------------------------------------------------------
+        # 1 - Move onto the plus limit and wait to stabilise,
+
+        # -------- motor A
+        self.ma_slide_on_plim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            #
+            pass_conds=tls.is_on_plim_inpos,
+            cry_cmds=["#{L1}jog+"],
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join("autest_out", "ma_slide_on_plim.csv"),
+            #
+            celeb_cmds=["#{L7}kill"],
+            wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
+        )
+
+        # -------------------------------------------------------------------
+        # 1 - settles at staring point
+        self.ma_start_pos_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            pass_conds=[
+                "Motor[L1].InPos==1",
+                "#{L7}p > {attackpos_enc} + Motor[L7].CapturedPos",
+            ],
+        )
+
+        # -------------------------------------------------------------------
+        # 1.1 - Step towards the staring point
+
+        # -------- motor A
+        self.ma_step_until_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            pass_conds="Motor[L1].InPos==1",
+            cry_cmds=[],
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join("autest_out", "ma_small_steps.csv"),
+            celeb_cmds=["#{L1}jog:{smalljog_steps}"],
+            wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
+            ongoing=True,
+            poll_pr=(
+                lambda ag_self: not ag_self.owner.ma_start_pos_ag.inhibited
+                and ag_self.owner.ma_start_pos_ag.poll.Var is False
+            ),
+        )
+
+        self.ma_slide_off_plim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            #
+            pass_conds=tls.is_off_limit_inpos,
+            cry_cmds=[
+                "Motor[L1].JogSpeed={HomeVel}",
+                "#{L7}j:{SlideOff_Dir}{slideoff_steps}",
+                "Motor[L7].CapturePos=1",
+                "#{L1}j:-{HomeOffset}",
+            ],
+            SlideOff_Dir="-",
+            cry_retries=20,
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join("autest_out", "ma_slide_off_plim.csv"),
+            # resetting the changes in this action
+            celeb_cmds=[
+                "Motor[L1].JogSpeed={JogSpeed}",
+                "PowerBrick[L2].Chan[L3].CountError=0",
+            ],
+            wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
+        )
+
+        # -------------------------------------------------------------------
+        # 2 - Move onto the minus limit and wait to stabilise,
+
+        # -------- motor A
+        self.ma_slide_on_mlim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            #
+            pass_conds=tls.is_on_mlim_inpos,
+            cry_cmds=["#{L1}jog-"],
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join("autest_out", "ma_slide_on_mlim.csv"),
+            #
+            celeb_cmds=["#{L7}kill"],
+            wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
+        )
+
+        # -------------------------------------------------------------------
+        # 3 - Arm Capture and slide off for capturing the falling edge
+
+        # -------- motor A
+        self.ma_slide_off_mlim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            #
+            pass_conds=tls.is_off_limit_inpos,
+            cry_cmds=[
+                "Motor[L1].JogSpeed={HomeVel}",
+                "#{L7}j:{SlideOff_Dir}{slideoff_steps}",
+                "Motor[L7].CapturePos=1",
+                # "#{L1}j:{SlideOff_Dir}{slideoff_steps}",
+                "#{L1}j=0",
+            ],
+            SlideOff_Dir="+",
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join("autest_out", "ma_slide_off_mlim.csv"),
+            # resetting the changes in this action
+            celeb_cmds=[
+                "Motor[L1].JogSpeed={JogSpeed}",
+                "PowerBrick[L2].Chan[L3].CountError=0",
+            ],
+            wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
+        )
+
+        # -------------------------------------------------------------------
+
+        # now setup a sequencer
+        self.inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
+        # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
+        self.inner_loop_ag.repeats = tst["loop_repeats"] - 1
+
+        # ----------------------------------------------------------------------
+
+        # -------------------------------------------------------------------
+        # -------------------------------------------------------------------
+        self.kill_on_collision_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            ongoing=True,
+            pass_conds=[
+                # clearance is low
+                f"#11p > #12p + {clearance_enc}",
+                # and it is decreasing
+                f"Motor[3].ActVel - Motor[4].ActVel > 0",
+            ],
+            celeb_cmds=[f"#3,4 kill"],
+        )
+
+        def reset_after_kill(ag_self: ra.Agent):
+            """    
+            This aoa checks for collission zone condition. 
+            celeb commands are
+            This is an ongoing check, therefore never gets Done.
+
+            Args:
+                ag_self (ra.Agent): [description]
+
+            Returns:
+                [type]: [description]
+            """
+            print("KILLLED TO PREVENT COLLISION")
+
+            return ra.StateLogics.Idle, "back to idle"
+
+        self.kill_on_collision_ag.act_on_armed = reset_after_kill
+
+        ################################################################################################################
+        # folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #
+        ################################################################################################################
+
+        # -------------------------------------------------------------------
+        # set the forced sequence rules
+
+        self.ma_test_config_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_base_config_ag.is_done
+        )
+        self.ma_go_mlim_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_test_config_ag.is_done
+        )
+        self.ma_home_on_mlim_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_go_mlim_ag.is_done
+        )
+
+        self.ma_start_pos_ag.poll_pr = lambda ag_self: False
+
+        # setup the sequence default dependency (can be done automaticatlly)
+        self.ma_slide_on_plim_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_home_on_mlim_ag.is_done
+        )
+
+        self.ma_slide_off_plim_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_slide_on_plim_ag.is_done
+        )
+
+        self.ma_slide_on_mlim_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_slide_off_plim_ag.is_done
+        )
+        self.ma_slide_off_mlim_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.ma_slide_on_mlim_ag.is_done
+        )
+
+        self.inner_loop_ag.all_done_ag = self.ma_slide_off_mlim_ag
+        self.inner_loop_ag.reset_these_ags = [
+            self.ma_slide_on_plim_ag,
+            self.ma_slide_off_plim_ag,
+            self.ma_slide_on_mlim_ag,
+            self.ma_slide_off_mlim_ag,
+        ]
         # ----------------------------------------------------------------------
 
 

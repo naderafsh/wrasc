@@ -108,7 +108,7 @@ with open(tst["baseconfig_fname"]) as f:
 
 # using a default set of parameters to log for each motor
 default_pass_logs = ppra.expand_globals(
-    tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_A"]
+    tls.log_main_n_companion, pp_glob_dict, **tst["Mot_A"]
 )
 
 ################################################################################################################
@@ -155,7 +155,7 @@ ma_test_config_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_ppmac_A,
     **tst["Mot_A"],
-    cry_cmds=tls.config_rdb_lmt
+    cry_cmds=tls.config_rdb_capt
     + rev_enc_cmd
     + current_stat
     + ["Motor[L1].HomeOffset = {HomeOffset}"],
@@ -167,22 +167,22 @@ ma_test_config_ag = ppra.WrascPmacGate(
 )
 # -------------------------------------------------------------------
 # 0.1 - Move to MLIM
-ma_go_nlim_ag = ppra.WrascPmacGate(
+ma_go_mlim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_ppmac_A,
     **tst["Mot_A"],
-    pass_conds=tls.cond_on_neg_lim,
+    pass_conds=tls.is_on_mlim_inpos,
     cry_cmds="#{L1}j-",
     wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
     celeb_cmds=["#{L1}j-", "#{L7}kill"],
 )
 # -------------------------------------------------------------------
 # 0.2 - Home sliding off the limit
-ma_home_ag = ppra.WrascPmacGate(
+ma_home_on_mlim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_ppmac_A,
     **tst["Mot_A"],
-    pass_conds=["Motor[L1].HomeComplete==1"] + tls.check_off_limit_inpos_tl,
+    pass_conds=["Motor[L1].HomeComplete==1"] + tls.is_off_limit_inpos,
     cry_cmds="#{L1}hm",
     celeb_cmds=["#{L7}kill"],
     wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
@@ -230,12 +230,12 @@ ma_step_until_ag = ppra.WrascPmacGate(
 # 2 - Move onto the minus limit and wait to stabilise,
 
 # -------- motor A
-ma_slide_on_ag = ppra.WrascPmacGate(
+ma_slide_on_mlim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_ppmac_A,
     **tst["Mot_A"],
     #
-    pass_conds=tls.cond_on_neg_lim,
+    pass_conds=tls.is_on_mlim_inpos,
     cry_cmds=["#{L1}jog-"],
     #
     pass_logs=default_pass_logs,
@@ -249,12 +249,12 @@ ma_slide_on_ag = ppra.WrascPmacGate(
 # 3 - Arm Capture and slide off for capturing the falling edge
 
 # -------- motor A
-ma_slide_off_ag = ppra.WrascPmacGate(
+ma_slide_off_mlim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_ppmac_A,
     **tst["Mot_A"],
     #
-    pass_conds=tls.check_off_limit_inpos_tl,
+    pass_conds=tls.is_off_limit_inpos,
     cry_cmds=[
         "Motor[L1].JogSpeed={HomeVel}",
         "#{L7}j:{SlideOff_Dir}{slideoff_steps}",
@@ -280,8 +280,12 @@ ma_slide_off_ag = ppra.WrascPmacGate(
 inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
 inner_loop_ag.repeats = tst["loop_repeats"] - 1
-inner_loop_ag.all_done_ag = ma_slide_off_ag
-inner_loop_ag.reset_these_ags = [ma_start_pos_ag, ma_slide_on_ag, ma_slide_off_ag]
+inner_loop_ag.all_done_ag = ma_slide_off_mlim_ag
+inner_loop_ag.reset_these_ags = [
+    ma_start_pos_ag,
+    ma_slide_on_mlim_ag,
+    ma_slide_off_mlim_ag,
+]
 # ----------------------------------------------------------------------
 
 # -------------------------------------------------------------------
@@ -327,16 +331,16 @@ kill_on_collision_ag.act_on_armed = reset_after_kill
 # set the forced sequence rules
 
 ma_test_config_ag.poll_pr = lambda ag_self: ma_base_config_ag.is_done
-ma_go_nlim_ag.poll_pr = lambda ag_self: ma_test_config_ag.is_done
-ma_home_ag.poll_pr = lambda ag_self: ma_go_nlim_ag.is_done
+ma_go_mlim_ag.poll_pr = lambda ag_self: ma_test_config_ag.is_done
+ma_home_on_mlim_ag.poll_pr = lambda ag_self: ma_go_mlim_ag.is_done
 
 # setup the sequence default dependency (can be done automaticatlly)
 ma_start_pos_ag.poll_pr = (
-    lambda ag_self: ma_home_ag.is_done
+    lambda ag_self: ma_home_on_mlim_ag.is_done
 )  # and ma_hmz_companion_ag.is_done
 
-ma_slide_on_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
-ma_slide_off_ag.poll_pr = lambda ag_self: ma_slide_on_ag.is_done
+ma_slide_on_mlim_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
+ma_slide_off_mlim_ag.poll_pr = lambda ag_self: ma_slide_on_mlim_ag.is_done
 # ----------------------------------------------------------------------
 
 ################################################################################################################

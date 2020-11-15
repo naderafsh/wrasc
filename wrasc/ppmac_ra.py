@@ -415,66 +415,24 @@ def ppwr_poll_in(ag_self: ra.Agent):
 
 def ppwr_act_on_valid(ag_self: ra.Agent):
     """
-    The best act here is to Arm when an action is known.
-    Because there are two different actions are known here, it is best to reset the
-    act status to idle whenever the poll status is changed.
-
-    This will ARM if an act_on_armed method is defined. This is for users to hook their custom methods
+    user action can be injected here 
     """
 
     assert isinstance(ag_self, WrascPmacGate)
     ag_self: WrascPmacGate
 
+    if ag_self.poll.is_on_hold():
+        return ra.StateLogics.Done, f"Done."
+
     # Arm for action if poll is changed to False or True
     if ag_self.poll.Var == True:
-
-        # if already put on hold
-        if ag_self.poll.is_on_hold():
-            return ra.StateLogics.Done, f"Done."
-
-        # do celeb commands if they exist
-        if ag_self.celeb_cmds_parsed:
-            resp = ag_self.ppmac.send_receive_raw(
-                ag_self.eval_cmd(ag_self.celeb_cmds_parsed)
-            )
-        else:
-            resp = ""
-
-        # if this is a staged-pass then
-        # stop checking the condition. Stage is now passed.
-        # this will also trigger transition to Done state the next cycle.
-        if not ag_self.ongoing:
-            ag_self.poll.hold(for_cycles=-1, reset_var=False)
-            # TODO Remove this test code
-            # ag_self.act.hold(for_cycles=1, reset_var=False)
-
-        return ra.StateLogics.Armed, f"armed: {resp}"
+        return ag_self.celeb_act()
 
     elif ag_self.poll.Var == False:
 
-        # condition is not met, so the we need to keep checking, and probably sending a fixer action
-        # check how many times this is repeated
-        # this is a way of managing reties:
-        # once the agent gets armed, it will not be released until externally poked back?
-
-        if ag_self.cry_cmds_parsed:
-
-            if ag_self.cry_tries >= ag_self.cry_retries:
-                return (
-                    ra.StateLogics.Idle,
-                    f"retries exhausted {ag_self.cry_tries}/{ag_self.cry_retries}",
-                )
-
-            ag_self.cry_tries = ag_self.cry_tries + 1
-            resp = ag_self.ppmac.send_receive_raw(
-                ag_self.eval_cmd(ag_self.cry_cmds_parsed)
-            )
-            return (
-                ra.StateLogics.Idle,
-                f"Fix action {ag_self.cry_tries}/{ag_self.cry_retries}",
-            )
-
-        return ra.StateLogics.Idle, "No action"
+        return ag_self.cry_act()
+    else:
+        return ra.StateLogics.Idle, "Invalid State"
 
 
 def ppwr_act_on_armed(ag_self: ra.Agent):
@@ -607,22 +565,8 @@ class PPMAC:
                 if n_to_receive == len(returned_lines):
                     # in case of multiple commands,
                     # commands are not included in the reponse
-                    # so zip them here
-                    # cmd_response = list(zip(command.split("\n"), returned_lines))
                     cmd_response = [command, "\n".join(returned_lines)]
-                # elif n_to_receive < len(returned_lines):
-                #     # in case of multiple commands,
-                #     # all commands precede the responses!
-                #     #
-                #     ret_cmds = "\n".join(returned_lines[: n_to_receive - 1])
-                #     ret_resps = "\n".join(returned_lines[n_to_receive - 1 + 1 :])
 
-                #     cmd_response = [ret_cmds, ret_resps]
-
-                #     # cmd_response = [
-                #     #     [returned_lines[i], returned_lines[i + n_to_receive]]
-                #     #     for i in range(n_to_receive)
-                #     # ]
                 else:
                     cmd_response = returned_lines
                 wasSuccessful = True
@@ -646,10 +590,6 @@ class PPMAC:
         if not wasSuccessful:
             # there are some errors but we can't through away the whole response!
             return None, False, error_msg
-
-            # raise RuntimeError(
-            #     f"{error_msg} in {cmd_list}  \n\n can't continue due to ambiguity"
-            # )
 
         ret_list = cmd_resp[1].split("\n")
 
@@ -1095,6 +1035,49 @@ class WrascPmacGate(ra.Agent):
 
             self.cvscontent = None
 
+    def celeb_act(self):
+
+        # do celeb commands if they exist
+        if self.celeb_cmds_parsed:
+            resp = self.ppmac.send_receive_raw(self.eval_cmd(self.celeb_cmds_parsed))
+        else:
+            resp = ""
+
+        # if this is a staged-pass then
+        # stop checking the condition. Stage is now passed.
+        # this will also trigger transition to Done state the next cycle.
+        if not self.ongoing:
+            self.poll.hold(for_cycles=-1, reset_var=False)
+
+        return ra.StateLogics.Armed, f"armed: {resp}"
+
+    def cry_act(self):
+        # condition is not met, so the we need to keep checking, and probably sending a fixer action
+        # check how many times this is repeated
+        # this is a way of managing reties:
+        # once the agent gets armed, it will not be released until externally poked back?
+
+        if self.cry_cmds_parsed:
+
+            if self.cry_tries >= self.cry_retries:
+                return (
+                    ra.StateLogics.Idle,
+                    f"retries exhausted {self.cry_tries}/{self.cry_retries}",
+                )
+
+            self.cry_tries = self.cry_tries + 1
+            resp = self.ppmac.send_receive_raw(self.eval_cmd(self.cry_cmds_parsed))
+            if not resp[1]:
+                # error in command or comms
+                pass
+
+            return (
+                ra.StateLogics.Idle,
+                f"Fix action {self.cry_tries}/{self.cry_retries} {resp[2]}",
+            )
+
+        return ra.StateLogics.Idle, "No action"
+
 
 # -------------------------------------------------------------------
 def done_condition_poi(ag_self: ra.Agent):
@@ -1128,10 +1111,11 @@ def done_condition_poi(ag_self: ra.Agent):
         if ag.layer >= ag_self.layer:
             continue
 
-        all_stages_passed = all_stages_passed and ag.is_done  # ag.poll.Var
-
-    if not all_stages_passed:
-        return None, f"awaiting {ag.name} ...{ag_self.repeats + 1} to go"
+        all_stages_passed = all_stages_passed and (
+            ag.is_done or ag.inhibited
+        )  # ag.poll.Var
+        if not all_stages_passed:
+            return None, f"awaiting {ag.name} ...{ag_self.repeats + 1} to go"
 
     # all done. Now decide based on a counrter to either quit or reset and repeat
     if ag_self.repeats > 0:

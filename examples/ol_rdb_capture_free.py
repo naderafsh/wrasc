@@ -2,7 +2,7 @@ from wrasc import ppmac_ra as ppra
 
 # from wrasc import gpcom_wrap
 from os import environ, path
-from examples.motion_tests_ra import OLRDBCapt
+from examples.motion_tests_ra import OL_RDB_Mlim, OL_Rdb_Lim2Lim
 
 import utils
 
@@ -67,7 +67,7 @@ overall_egu_per_rev = tst["Mot_A"]["overall_egu_per_rev"] = 2
 enc_res = tst["Mot_A"]["encoder_res"] = 50e-6  # mm
 
 tst["Mot_A"]["HomeOffset_EGU"] = tst["Mot_A"]["overall_egu_per_rev"] / 20
-tst["Mot_A"]["JogSpeed_EGU"] = tst["Mot_A"]["overall_egu_per_rev"]
+tst["Mot_A"]["JogSpeed_EGU"] = tst["Mot_A"]["overall_egu_per_rev"] * 2
 
 tst["Mot_A"]["HomeVel_EGU"] = tst["Mot_A"]["JogSpeed_EGU"] / 5
 tst["Mot_A"]["slideoff_steps"] = 400
@@ -84,7 +84,7 @@ tst["Mot_A"]["limit_settle_time"] = 2  # sec
 utils.dump_obj(tst, path.join("autest_in", "sample_test" + ".yaml"))
 
 
-ol_test = OLRDBCapt(_VERBOSE_=_VERBOSE_, tst=tst)
+ol_test = OL_Rdb_Lim2Lim(_VERBOSE_=_VERBOSE_, tst=tst)
 
 ################################################################################################################
 # folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #

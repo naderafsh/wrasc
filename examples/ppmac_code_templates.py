@@ -62,7 +62,7 @@ def assert_pos_wf(xx: int, target_pos, tol):
     )
 
 
-config_rdb_lmt = [
+config_rdb_capt = [
     # "Motor[L7].PosSf = {encoder_possf}",
     # "EncTable[L7].ScaleFactor = -1/256",
     # put EncType first, as it resets pCaptFlag and pCaptPos !!!!
@@ -86,21 +86,22 @@ config_rdb_lmt = [
 ]
 
 verify_config_rdb_lmt = [
-    cond.replace("=", "==") if ("=" in cond) else cond for cond in config_rdb_lmt
+    cond.replace("=", "==") if ("=" in cond) else cond for cond in config_rdb_capt
 ]
 
-jog_capt_rbk_tl = [
+jog_slideoff_mlim = [
     "#{L1}j:{SlideOff_Dir}2000^{Trig_Offset} #{L7}j:10^0",
 ]
 
-cond_on_neg_lim = ["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"]
+is_on_mlim_inpos = ["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"]
+is_on_plim_inpos = ["Motor[L1].PlusLimit>0", "Motor[L1].InPos>0"]
 
-check_off_limit_inpos_tl = [
+is_off_limit_inpos = [
     "Motor[L1].MinusLimit==0",
     "Motor[L1].PlusLimit==0",
     "Motor[L1].InPos>0",
 ]
-log_capt_rbk_tl = [
+log_main_n_companion = [
     # readback capture via companion axis
     "Motor[L7].CapturedPos",
     # readback and step position at stop position
@@ -121,7 +122,7 @@ log_capt_rbk_tl = [
     "PowerBrick[L2].Chan[L3].CountError",
 ]
 
-reset_rbk_capt_tl = [
+reset_rdb_capt_config = [
     "Motor[L1].JogSpeed={JogSpeed}",
     "Motor[L1].CaptureMode=1",  # reset capture mode to default baseConfig
     "#{L1}hmz",
