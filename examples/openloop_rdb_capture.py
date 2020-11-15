@@ -60,6 +60,7 @@ tst[
 # pp_glob_dictst data
 axis_n = 4
 tst["Mot_A"] = ppra.axis(axis_n).LVars()
+tst["Mot_A"]["ID"] = f"CIL_M{axis_n}"
 tst["Mot_A"]["encoder_reversed"] = axis_n == 4
 micro_steps = tst["Mot_A"]["micro_steps"] = 32
 fullsteps_per_rev = tst["Mot_A"]["fullsteps_per_rev"] = 200
@@ -72,7 +73,7 @@ tst["Mot_A"]["JogSpeed_EGU"] = tst["Mot_A"]["overall_egu_per_rev"]
 tst["Mot_A"]["HomeVel_EGU"] = tst["Mot_A"]["JogSpeed_EGU"] / 5
 tst["Mot_A"]["slideoff_steps"] = 400
 # tst["Mot_A"]["csv_file_name"] = path.join("autest_out", "ma_capture.csv")
-tst["Mot_A"]["attackpos_egu"] = 100
+tst["Mot_A"]["attackpos_egu"] = 2
 tst["Mot_A"]["smalljog_egu"] = 0.5
 
 tst["Mot_A"]["jog_settle_time"] = 1  # sec
@@ -95,10 +96,10 @@ tst["Mot_A"]["JogSpeed"] = tst["Mot_A"]["JogSpeed_EGU"] / step_res / 1000
 tst["Mot_A"]["HomeVel"] = tst["Mot_A"]["HomeVel_EGU"] / step_res / 1000
 clearance_enc = tst["clearance_egu"] / enc_res
 
-test_gpascii = ppra.PPMAC(ppmac_hostname, backward=tst["ppmac_is_backward"])
+test_ppmac = ppra.PPMAC(ppmac_hostname, backward=tst["ppmac_is_backward"])
 # it is possible to use multiple gpascii channels,
 # but we don't have a reason to do so, yet!
-test_gpascii_A = test_gpascii
+test_ppmac_A = test_ppmac
 
 pp_glob_dict = ppra.load_pp_globals(tst["ppglobal_fname"])
 with open(tst["baseconfig_fname"]) as f:
@@ -106,7 +107,9 @@ with open(tst["baseconfig_fname"]) as f:
     f.close
 
 # using a default set of parameters to log for each motor
-pass_logs = ppra.expand_globals(tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_A"])
+default_pass_logs = ppra.expand_globals(
+    tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_A"]
+)
 
 ################################################################################################################
 # folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #
@@ -115,14 +118,13 @@ pass_logs = ppra.expand_globals(tls.log_capt_rbk_tl, pp_glob_dict, **tst["Mot_A"
 # -1 - check configuration
 
 # -------- motor A
-config_stats = ppra.expand_globals(base_config, pp_glob_dict, **tst["Mot_A"])
-
+config_cmds = ppra.expand_globals(base_config, pp_glob_dict, **tst["Mot_A"])
 ma_base_config_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
-    ppmac=test_gpascii_A,
+    ppmac=test_ppmac_A,
     **tst["Mot_A"],
     # validate / download calibration
-    cry_cmds=config_stats,
+    cry_cmds=config_cmds,
     cry_retries=2,
     # phase the motor
     celeb_cmds="#{L1}$",
@@ -143,20 +145,15 @@ ma_base_config_ag = ppra.WrascPmacGate(
 # -------------------------------------------------------------------
 # 0 - check configuration
 # also add axis confix if there are deviations from baseConfig
-
-# -------- motor A
-
 rev_enc_cmd = (
     ["PowerBrick[L2].Chan[L3].EncCtrl=7"]
     if tst["Mot_A"]["encoder_reversed"]
     else ["PowerBrick[L2].Chan[L3].EncCtrl=3"]
 )
-
 current_stat = ppra.expand_globals(["full_current(L1)=1"], pp_glob_dict, **tst["Mot_A"])
-
-ma_init_checks_ag = ppra.WrascPmacGate(
+ma_test_config_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
-    ppmac=test_gpascii_A,
+    ppmac=test_ppmac_A,
     **tst["Mot_A"],
     cry_cmds=tls.config_rdb_lmt
     + rev_enc_cmd
@@ -170,11 +167,9 @@ ma_init_checks_ag = ppra.WrascPmacGate(
 )
 # -------------------------------------------------------------------
 # 0.1 - Move to MLIM
-
-# -------- motor A
-ma_init_on_lim_ag = ppra.WrascPmacGate(
+ma_go_nlim_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
-    ppmac=test_gpascii_A,
+    ppmac=test_ppmac_A,
     **tst["Mot_A"],
     pass_conds=tls.cond_on_neg_lim,
     cry_cmds="#{L1}j-",
@@ -183,44 +178,20 @@ ma_init_on_lim_ag = ppra.WrascPmacGate(
 )
 # -------------------------------------------------------------------
 # 0.2 - Home sliding off the limit
-
-ma_init_on_home_ag = ppra.WrascPmacGate(
+ma_home_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
-    ppmac=test_gpascii_A,
+    ppmac=test_ppmac_A,
     **tst["Mot_A"],
     pass_conds=["Motor[L1].HomeComplete==1"] + tls.check_off_limit_inpos_tl,
     cry_cmds="#{L1}hm",
     celeb_cmds=["#{L7}kill"],
     wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
 )
-
-# -------------------------------------------------------------
-# Only once (first time) the main axis is homed
-# and companion axis is killed, reset companion axis readback to zero
-# This is not very accurate anyways.
-# ma_hmz_companion_ag = ppra.WrascPmacGate(
-#     verbose=_VERBOSE_,
-#     ppmac=test_gpascii_A,
-#     **tst["Mot_A"],
-#     pass_conds=[
-#         "Motor[L7].AmpEna==0",
-#         "Motor[L1].HomeComplete==1",
-#         "#{L1}p > -5",
-#         "#{L1}p < 5",
-#     ],
-#     cry_cmds=[],
-#     celeb_cmds="#{L7}hmz",
-#     # this is a one off. therefore, if it fails, then th loop gets stock
-#     ongoing=False,
-# )
-
 # -------------------------------------------------------------------
-# 1 - settle at staring point
-
-# -------- motor A
+# 1 - settles at staring point
 ma_start_pos_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
-    ppmac=test_gpascii_A,
+    ppmac=test_ppmac_A,
     **tst["Mot_A"],
     pass_conds=[
         "Motor[L1].InPos==1",
@@ -234,37 +205,41 @@ ma_start_pos_ag = ppra.WrascPmacGate(
 # -------- motor A
 ma_step_until_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
-    ppmac=test_gpascii_A,
+    ppmac=test_ppmac_A,
     **tst["Mot_A"],
     pass_conds="Motor[L1].InPos==1",
     cry_cmds=[],
-    pass_logs=pass_logs,
-    csv_file_name=path.join("autest_out", "ma_small_steps.csv"),
+    pass_logs=default_pass_logs,
+    csv_file_path=path.join("autest_out", "ma_small_steps.csv"),
     celeb_cmds=["#{L1}jog:{smalljog_steps}"],
     wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
+    ongoing=True,
+    poll_pr=(
+        lambda ag_self: not ma_start_pos_ag.inhibited
+        and ma_start_pos_ag.poll.Var is False
+    ),
 )
-# this agent will not be put on old when passed:
-ma_step_until_ag.ongoing = True
+
 # step until will be active everytime the ma_start_pos_ag is not on hold
-ma_step_until_ag.poll_pr = (
-    lambda ag_self: not ma_start_pos_ag.inhibited and ma_start_pos_ag.poll.Var is False
-)
+# ma_step_until_ag.poll_pr = (
+#     lambda ag_self: not ma_start_pos_ag.inhibited and ma_start_pos_ag.poll.Var is False
+# )
 
 
 # -------------------------------------------------------------------
 # 2 - Move onto the minus limit and wait to stabilise,
 
 # -------- motor A
-ma_on_lim_ag = ppra.WrascPmacGate(
+ma_slide_on_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
-    ppmac=test_gpascii_A,
+    ppmac=test_ppmac_A,
     **tst["Mot_A"],
     #
     pass_conds=tls.cond_on_neg_lim,
     cry_cmds=["#{L1}jog-"],
     #
-    pass_logs=pass_logs,
-    csv_file_name=path.join("autest_out", "ma_slide_on.csv"),
+    pass_logs=default_pass_logs,
+    csv_file_path=path.join("autest_out", "ma_slide_on.csv"),
     #
     celeb_cmds=["#{L7}kill"],
     wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
@@ -276,7 +251,7 @@ ma_on_lim_ag = ppra.WrascPmacGate(
 # -------- motor A
 ma_slide_off_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
-    ppmac=test_gpascii_A,
+    ppmac=test_ppmac_A,
     **tst["Mot_A"],
     #
     pass_conds=tls.check_off_limit_inpos_tl,
@@ -289,8 +264,8 @@ ma_slide_off_ag = ppra.WrascPmacGate(
     ],
     SlideOff_Dir="+",
     #
-    pass_logs=pass_logs,
-    csv_file_name=path.join("autest_out", "ma_slide_off.csv"),
+    pass_logs=default_pass_logs,
+    csv_file_path=path.join("autest_out", "ma_slide_off.csv"),
     # resetting the changes in this action
     celeb_cmds=[
         "Motor[L1].JogSpeed={JogSpeed}",
@@ -306,13 +281,13 @@ inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
 # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
 inner_loop_ag.repeats = tst["loop_repeats"] - 1
 inner_loop_ag.all_done_ag = ma_slide_off_ag
-inner_loop_ag.reset_these_ags = [ma_start_pos_ag, ma_on_lim_ag, ma_slide_off_ag]
+inner_loop_ag.reset_these_ags = [ma_start_pos_ag, ma_slide_on_ag, ma_slide_off_ag]
 # ----------------------------------------------------------------------
 
 # -------------------------------------------------------------------
 # -------------------------------------------------------------------
-collision_stopper_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_gpascii,)
-collision_stopper_ag.setup(
+kill_on_collision_ag = ppra.WrascPmacGate(verbose=_VERBOSE_, ppmac=test_ppmac,)
+kill_on_collision_ag.setup(
     ongoing=True,
     pass_conds=[
         # clearance is low
@@ -341,7 +316,7 @@ def reset_after_kill(ag_self: ra.Agent):
     return ra.StateLogics.Idle, "back to idle"
 
 
-collision_stopper_ag.act_on_armed = reset_after_kill
+kill_on_collision_ag.act_on_armed = reset_after_kill
 
 
 ################################################################################################################
@@ -351,17 +326,17 @@ collision_stopper_ag.act_on_armed = reset_after_kill
 # -------------------------------------------------------------------
 # set the forced sequence rules
 
-ma_init_checks_ag.poll_pr = lambda ag_self: ma_base_config_ag.is_done
-ma_init_on_lim_ag.poll_pr = lambda ag_self: ma_init_checks_ag.is_done
-ma_init_on_home_ag.poll_pr = lambda ag_self: ma_init_on_lim_ag.is_done
+ma_test_config_ag.poll_pr = lambda ag_self: ma_base_config_ag.is_done
+ma_go_nlim_ag.poll_pr = lambda ag_self: ma_test_config_ag.is_done
+ma_home_ag.poll_pr = lambda ag_self: ma_go_nlim_ag.is_done
 
 # setup the sequence default dependency (can be done automaticatlly)
 ma_start_pos_ag.poll_pr = (
-    lambda ag_self: ma_init_on_home_ag.is_done
+    lambda ag_self: ma_home_ag.is_done
 )  # and ma_hmz_companion_ag.is_done
 
-ma_on_lim_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
-ma_slide_off_ag.poll_pr = lambda ag_self: ma_on_lim_ag.is_done
+ma_slide_on_ag.poll_pr = lambda ag_self: ma_start_pos_ag.is_done
+ma_slide_off_ag.poll_pr = lambda ag_self: ma_slide_on_ag.is_done
 # ----------------------------------------------------------------------
 
 ################################################################################################################
@@ -379,7 +354,7 @@ ppra.ra.process_loop(
     agents, 100000, cycle_period=tst["wrasc_cycle_period"], debug=True,
 )
 
-test_gpascii.close
+test_ppmac.close
 
 # now load the csv file and plot
 

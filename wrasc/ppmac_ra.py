@@ -728,7 +728,7 @@ class WrascPmacGate(ra.Agent):
         cry_retries=1,
         celeb_cmds=[],
         pass_logs=[],
-        csv_file_name=None,
+        csv_file_path=None,
         ongoing=False,
         wait_after_celeb=None,
         **kwargs,
@@ -761,7 +761,7 @@ class WrascPmacGate(ra.Agent):
             cry_retries=cry_retries,
             celeb_cmds=celeb_cmds,
             pass_logs=pass_logs,
-            csv_file_name=csv_file_name,
+            csv_file_path=csv_file_path,
             ongoing=ongoing,
             wait_after_celeb=wait_after_celeb,
             **kwargs,
@@ -794,7 +794,7 @@ class WrascPmacGate(ra.Agent):
         cry_retries=None,
         celeb_cmds=None,
         pass_logs=None,
-        csv_file_name=None,
+        csv_file_path=None,
         ongoing=None,
         wait_after_celeb=None,
         **kwargs,
@@ -850,8 +850,8 @@ class WrascPmacGate(ra.Agent):
         )
         self.pass_logs_parsed = parse_stats(self.pass_logs)
 
-        if csv_file_name:
-            self.csv_file_name = csv_file_name
+        if csv_file_path:
+            self.csv_file_name = csv_file_path
 
         # setup the headers, they get written when (and only if) the first set of readings are ready
         if self.pass_logs_parsed:
