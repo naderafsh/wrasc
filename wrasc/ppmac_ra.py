@@ -1,3 +1,4 @@
+from pandas.core.indexes.base import Index
 from wrasc import reactive_agent as ra
 from ppmac import GpasciiClient
 from ppmac import PpmacToolMt
@@ -35,6 +36,9 @@ and set id_done.
 macrostrs = ["{", "}"]
 
 ppmac_func_dict = {"EXP2": "2**"}
+
+regex_anynum = r"[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?"
+regex_exp_notification = r"[+-]?\d+(?:\.\d*(?:[eE][+-]?\d+)?)"
 
 
 def default_asic_chan(axis):
@@ -153,12 +157,18 @@ def parse_vars(stat: str):
     all_vars = []
 
     # first see if there are P-Var or I-Var references
-
     p_vars = re.findall(r"[pP]\([\w+]*\)", stat)
     for v in p_vars:
         all_vars.append(v)
         vars_index = len(all_vars) - 1
         stat = stat.replace(v, f"_var_{vars_index}")
+
+    # find exponential notations and convert them.
+    # ppmac doesn't understand 5e-3
+    p_vars = re.findall(regex_anynum, stat)
+    for v in p_vars:
+        if "e" in v.lower():
+            stat = stat.replace(v, f"{float(v):.8f}")
 
     # split the statement
     for v in re.split(r"[\+\-\*\/=><! \(\)]", stat):
@@ -316,11 +326,11 @@ def expand_pmac_stats(stats, **vars):
         except KeyError:
             # if there is a macro which can't be found in vars, then leave it!
             stats_out.append(stat)
-            print(f"unresolved parameters; left for late binding:\n{stat_org}")
+            raise KeyError(f"unresolved parameters; left for late binding:\n{stat_org}")
         except ValueError:
             # this is probably more serious...
             stats_out.append(stat)
-            print(f"ValueError in parameters; ignored!:\n{stat_org}")
+            raise ValueError(f"ValueError in parameters; ignored!:\n{stat_org}")
         except IndexError:
             # this is probably a syntax issue,
             # e.g. something other than a variable is passed as a macro
@@ -328,7 +338,7 @@ def expand_pmac_stats(stats, **vars):
             # raise RuntimeError(f"syntax error in ppmac statement: {stat} ")
 
             stats_out.append(stat)
-            print(f"IndexError in parameters; ignored!:\n{stat_org}")
+            raise IndexError(f"IndexError in parameters; ignored!:\n{stat_org}")
 
     return stats_out
 
@@ -354,7 +364,7 @@ def ppwr_poll_in(ag_self: ra.Agent):
         # take templates and variables from inside the
         # condisions and verify the statement
 
-        verify_text, statement = ag_self.check_cond_offline(condition)
+        verify_text, statement = ag_self.check_cond(condition)
 
         if verify_text is None:
             # major comms error, do not try the rest of the conditions?
@@ -364,38 +374,41 @@ def ppwr_poll_in(ag_self: ra.Agent):
             # this condition had some issues with syntax, continue with the rest
             verify_text = verify_text
 
-        one_sided_verify_text = verify_text.replace("==", " - (") + ")"
+        if (verify_text.count("==") == 1) and ("'" not in verify_text):
+            one_sided_verify_text = verify_text.replace("==", " - (") + ")"
+            # TODO improve this, the whole scheme shall work on a numpy is_close instead of isequal:
+            # depending on the lvar, round off or not!
+            left_side = condition[1][0]  # type: str
+            qual = left_side.lower().split(".")[-1]
+            if qual.endswith("speed"):
+                precision = 1e-6
+            elif qual.endswith("gain"):
+                precision = 1.0e-7
+            elif qual.endswith("pwmsf"):
+                precision = 1  # probably wrong
+            elif qual.endswith("maxint"):
+                precision = 0.0625
+            elif qual.endswith("scalefactor"):
+                precision = 1e-16
+            else:
+                precision = 1e-16
 
-        # TODO improve this, the whole scheme shall bwork on a numpy is_close instead of isequal:
-        # depending on the lvar, round off or not!
-        left_side = condition[1][0]  # type: str
-        qual = left_side.lower().split(".")[-1]
-        if qual.endswith("speed"):
-            precision = 1e-6
-        elif qual.endswith("gain"):
-            precision = 1.0e-7
-        elif qual.endswith("pwmsf"):
-            precision = 1  # probably wrong
-        elif qual.endswith("maxint"):
-            precision = 0.0625
-        elif qual.endswith("scalefactor"):
-            precision = 1e-16
-        else:
-            precision = 1e-16
+            try:
+                if abs(eval(one_sided_verify_text)) > precision:
+                    # if eval(verify_text) == False:
+                    # no need to check the rest of the conditions
 
-        try:
-            if abs(eval(one_sided_verify_text)) > precision:
-                # if eval(verify_text) == False:
-                # no need to check the rest of the conditions
-                return (
-                    False,
-                    f"{statement}: {one_sided_verify_text} > {precision}",
-                )
-        except:
-            # arithmentic error, check literal statement
-            if eval(verify_text) == False:
-                # no need to check the rest of the conditions
-                return False, f"{statement}: {verify_text} "
+                    return (
+                        False,
+                        f"{statement}: {one_sided_verify_text} > {precision}",
+                    )
+                continue
+            except:
+                pass
+        # arithmentic error, check literal statement
+        if eval(verify_text) == False:
+            # no need to check the rest of the conditions
+            return False, f"{statement}: {verify_text} "
 
     return True, "True"
 
@@ -433,9 +446,7 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
         if not ag_self.ongoing:
             ag_self.poll.hold(for_cycles=-1, reset_var=False)
             # TODO Remove this test code
-            ag_self.act.hold(for_cycles=1, reset_var=False)
-
-        # ag_self.log_to_file()
+            # ag_self.act.hold(for_cycles=1, reset_var=False)
 
         return ra.StateLogics.Armed, f"armed: {resp}"
 
@@ -479,10 +490,18 @@ def ppwr_act_on_armed(ag_self: ra.Agent):
             # need to flick a deliberate change here, to reset the timer!
             ag_self.poll.ChangeTime = ra.timer()
 
-    # log if tere is a log!
-    ag_self.acquire_log()
-    ag_self.log_to_file()
-    return ra.StateLogics.Done, "wait aoa done."
+    if ag_self.pass_logs_parsed:
+        ag_self.acquire_log()
+        try:
+            ag_self.log_to_file()
+        except:
+            raise RuntimeError(
+                f"{ag_self.name}: writing log {ag_self.csvcontent} to file "
+            )
+
+    # ag_self.act.hold(for_cycles=-1, reset_var=False)
+
+    return ra.StateLogics.Done, "Done, act on hold."
 
 
 def ppwr_act_on_invalid(ag_self: ra.Agent):
@@ -589,7 +608,21 @@ class PPMAC:
                     # in case of multiple commands,
                     # commands are not included in the reponse
                     # so zip them here
-                    cmd_response = list(zip(command.split("\n"), returned_lines))
+                    # cmd_response = list(zip(command.split("\n"), returned_lines))
+                    cmd_response = [command, "\n".join(returned_lines)]
+                # elif n_to_receive < len(returned_lines):
+                #     # in case of multiple commands,
+                #     # all commands precede the responses!
+                #     #
+                #     ret_cmds = "\n".join(returned_lines[: n_to_receive - 1])
+                #     ret_resps = "\n".join(returned_lines[n_to_receive - 1 + 1 :])
+
+                #     cmd_response = [ret_cmds, ret_resps]
+
+                #     # cmd_response = [
+                #     #     [returned_lines[i], returned_lines[i + n_to_receive]]
+                #     #     for i in range(n_to_receive)
+                #     # ]
                 else:
                     cmd_response = returned_lines
                 wasSuccessful = True
@@ -601,6 +634,67 @@ class PPMAC:
             # wasSuccessful = True if success > 0 else False
 
             return cmd_response, wasSuccessful, error_msg
+
+    def send_list_receive_dict(self, cmd_list, timeout=5):
+
+        if not isinstance(self.gpascii, GpasciiClient):
+            return None, None, None
+
+        cmd_str = "\n".join(str(e) for e in cmd_list)
+        cmd_resp, wasSuccessful, error_msg = self.send_receive_raw(cmd_str)
+
+        if not wasSuccessful:
+            # there are some errors but we can't through away the whole response!
+            return None, False, error_msg
+
+            # raise RuntimeError(
+            #     f"{error_msg} in {cmd_list}  \n\n can't continue due to ambiguity"
+            # )
+
+        ret_list = cmd_resp[1].split("\n")
+
+        # extract the values
+        ret_key_val = [
+            stat.lower().strip("\n").strip(" ").strip("'").split("=")
+            for stat in ret_list
+        ]
+
+        ppmac_key_val = dict()
+
+        for i, keyval in enumerate(ret_key_val):
+
+            # first, verify if the returned cmd (key) matches sent cmd
+
+            if len(keyval) == 2:
+                if keyval[0] == cmd_list[i]:
+                    ppmac_key_val[cmd_list[i]] = {
+                        "val": keyval[1],
+                        "time": time.time(),
+                    }
+                else:
+                    # returned key is different, e.g. p(8190+2) returns p8192
+                    # check if this is the case, and
+                    invalid_vars = re.sub(r"[iqpdl]\d+", "", keyval[0])
+                    if invalid_vars:
+                        return None, False, f"mistmatch in ppmac response: {error_msg}"
+                    valid_var_num = re.findall(r"(?:[iqpdl])(\d+)", keyval[0])[0]
+                    evalstr = f"{cmd_list[i][1:]} - {valid_var_num}"
+                    if not eval(evalstr) == 0:
+                        return None, False, f"wrong variable index!! : {evalstr}"
+                    # it's ok to pass use the original command for this one
+                    ppmac_key_val[cmd_list[i]] = {
+                        "val": keyval[-1],
+                        "time": time.time(),
+                    }
+
+            # if the key is not yet found
+            elif len(cmd_list) > i:
+                ppmac_key_val[cmd_list[i]] = {
+                    "val": keyval[-1],
+                    "time": time.time(),
+                }
+
+        return ppmac_key_val, wasSuccessful, error_msg
 
     def close(self):
         self.gpascii.close()
@@ -848,6 +942,10 @@ class WrascPmacGate(ra.Agent):
             (str,str): evaluated_stat.lower(), statement
         """
 
+        if self.ppmac_key_val:
+            # offline info already exists... check further?
+            return self.check_cond_offline(condition)
+
         evaluated_stat, l_vars, statement = condition
 
         for i, l_var in enumerate(l_vars):
@@ -855,10 +953,13 @@ class WrascPmacGate(ra.Agent):
             tpl = self.ppmac.send_receive_raw(l_var)
 
             if not tpl[1]:
-                self.poll.Var = None
-                evaluated_stat = "Err"
-                break
-                # return ra.StateLogics.Invalid, "comms error"
+                # self.poll.Var = None
+                # effectively make it invalid!!
+                raise RuntimeError(
+                    f"ppmac returned error on statement {statement} command {l_var}"
+                )
+                # evaluated_stat = "NaN"
+                # break
 
             ret_val = tpl[0][1].strip("\n").strip(" ").strip("'").split("=")[-1]
 
@@ -880,37 +981,17 @@ class WrascPmacGate(ra.Agent):
         """
 
         # extract all stats
-
         var_list_of_lists = [elem[1] for elem in stats_parsed]
-        l_vars_list = [item for sublist in var_list_of_lists for item in sublist]
+        cmd_list = [item.lower() for sublist in var_list_of_lists for item in sublist]
 
-        # make a \n separate string
-        l_vars_str = "\n".join(str(e) for e in l_vars_list)
-        # send all stats
-        tpl = self.ppmac.send_receive_raw(l_vars_str)
-        if not tpl[1]:
-            return False
+        self.ppmac_key_val, success, err_msg = self.ppmac.send_list_receive_dict(
+            cmd_list
+        )
 
-        ret_list = tpl[0][1].split("\n")
-
-        # extract the values
-        ret_key_val = [
-            stat.strip("\n").strip(" ").strip("'").split("=") for stat in ret_list
-        ]
-
-        self.ppmac_key_val = dict()
-
-        for i, keyval in enumerate(ret_key_val):
-            # if len(keyval) == 2:
-            #     self.ppmac_key_val[keyval[0].lower()] = {
-            #         "val": keyval[1],
-            #         "time": time.time(),
-            #     }
-            if len(l_vars_list) > i:
-                self.ppmac_key_val[l_vars_list[i].lower()] = {
-                    "val": keyval[-1],
-                    "time": time.time(),
-                }
+        if not success:
+            # indicate failed acquisition by setting the dict to None
+            self.ppmac_key_val = None
+            # raise RuntimeError(f"{err_msg} in {cmd_list}")
 
     def check_cond_offline(self, condition):
         """
@@ -982,7 +1063,11 @@ class WrascPmacGate(ra.Agent):
         self.receive_cond_parsed(self.pass_logs_parsed)
         for condition in self.pass_logs_parsed:
             # acquire log statements
-            verify_text, statement = self.check_cond_offline(condition)
+
+            # if self.name.startswith("ma_on_") and condition[0].startswith("_var_0-05"):
+            #     print("delete_this")
+
+            verify_text, statement = self.check_cond(condition)
 
             if verify_text:
                 # store eval(verify_text) in the logs dict:
@@ -994,8 +1079,14 @@ class WrascPmacGate(ra.Agent):
         if len(vals) > 1:
             self.csvcontent += ",".join(map(str, vals)) + "\n"
 
+        return True
+
     def log_to_file(self):
         # now log a line to cvs if there is one
+
+        # if "5e" in self.csvcontent:
+        #     print(self.csvcontent)
+
         if self.csvcontent and self.csv_file_stamped:
 
             with open(self.csv_file_stamped, "w+") as file:

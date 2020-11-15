@@ -1530,7 +1530,9 @@ def process_loop(agents_sorted_by_layer, n_loop=1000000, cycle_period=0.5, debug
             if debug:
                 print("states = {}".format(state_record))
             print(
-                "end of cycle {}, {:.3f}s".format(i, run_time),
+                "end of cycle {}, {:.3f}s, average lag={:.3f}s".format(
+                    i, run_time, run_time / i - cycle_period
+                ),
                 end="\n ====================================== \n",
             )
 

@@ -44,7 +44,7 @@ _VERBOSE_ = 2
 tst = dict()
 
 wrasc_cycle_period = tst["wrasc_cycle_period"] = 0.25
-loop_repeats = tst["loop_repeats"] = 3
+loop_repeats = tst["loop_repeats"] = 2
 tst["clearance_egu"] = 10
 
 tst["ppmac_is_backward"] = False
@@ -390,29 +390,36 @@ import matplotlib.pyplot as plt
 
 from numpy import genfromtxt
 from os import path
-import pandas as pd
+from pandas import read_csv, concat
 
 # Enc_Res = 50e-6  # mm/count
 # Step_Res = 0.0003125  # mm/ustep
 
 # filename = path.join("autest_out", "ma_small_steps_201111_2030.csv")
 
-df = pd.read_csv(filename)
+df = read_csv(filename)
 
 # test_data = genfromtxt(filename, delimiter=",")
 
 headers = list(df.columns)
 
+gen_headers = dict()
 assert "CapturedPos" in headers[1]
+
+for header in headers:
+    gen_headers[header.split("_")[-1]] = header
+
+
 # TODO fix this hardcoded headers!
-rdb_capt_mm = df["M12_CapturedPos"] * enc_res
-rdb_hash_mm = df["A12_HashPos"] * enc_res
-rdb_calib_mm = rdb_hash_mm - rdb_capt_mm - df["M4_HomeOffset"] * step_res
-step_hash_mm = df["A4_HashPos"] * step_res
+rdb_capt_mm = df[gen_headers["CapturedPos"]] * enc_res
+rdb_hash_mm = df[gen_headers["HashPos"]] * enc_res
+rdb_calib_mm = rdb_hash_mm - rdb_capt_mm - df[gen_headers["HomeOffset"]] * step_res
+step_hash_mm = df[gen_headers["HashPos"]] * step_res
 time_sec = df["Time"]
 
-plt.plot(time_sec, pd.concat([rdb_calib_mm, step_hash_mm], axis=1))
-plt.ylabel("rdb and steps [mm]")
+plt.plot(time_sec, concat([rdb_calib_mm, step_hash_mm], axis=1))
+plt.title("{:}".format(gen_headers["HashPos"]))
+plt.ylabel(f"readback and steps [mm]")
 plt.xlabel("Time[sec]")
 plt.show()
 

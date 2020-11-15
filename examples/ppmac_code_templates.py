@@ -114,13 +114,14 @@ log_capt_rbk_tl = [
     "Motor[L1].HomePos",
     "Motor[L1].HomeOffset",
     "Motor[L7].HomePos",
+    # these will give ILLEGAL CMD errors
+    "{enc_res}",
+    "{step_res}",
     # Check these for errors
     "Motor[L7].CapturePos",
     "Motor[L1].TriggerNotFound",
     "Motor[L7].TriggerNotFound",
     "PowerBrick[L2].Chan[L3].CountError",
-    #    No capture on open loop steps as of 201106
-    #    "Motor[L1].CapturedPos",
 ]
 
 reset_rbk_capt_tl = [
