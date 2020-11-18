@@ -73,10 +73,13 @@ tst["Mot_A"]["HomeVel_EGU"] = tst["Mot_A"]["JogSpeed_EGU"] / 5
 tst["Mot_A"]["slideoff_steps"] = 400
 # tst["Mot_A"]["csv_file_name"] = path.join("autest_out", "ma_capture.csv")
 tst["Mot_A"]["attackpos_egu"] = 2
-tst["Mot_A"]["smalljog_egu"] = 0.5
+tst["Mot_A"]["smalljog_egu"] = 90
+tst["Mot_A"]["bigjog_egu"] = 100
 
 tst["Mot_A"]["jog_settle_time"] = 1  # sec
 tst["Mot_A"]["limit_settle_time"] = 2  # sec
+
+tst["Mot_A"]["fullrange_egu"] = 150  # mm
 
 # tst = utils.undump_obj("sample_test", "autest_in")
 # print(tst)
@@ -101,7 +104,7 @@ ol_test.test_ppmac.close
 
 # now load the csv file and plot
 
-filename = ol_test.ma_step_until_ag.csv_file_stamped
+filename = ol_test.ma_step_forward_ag.csv_file_stamped
 print(f"here is the log file: {filename}")
 
 import matplotlib.pyplot as plt

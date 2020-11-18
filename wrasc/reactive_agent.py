@@ -1086,6 +1086,8 @@ def compile_dependencies(_agents_list, script_globals):
             if fn is None:
                 continue
 
+            # BUG it seems that getsource truncates lambda functions after first \n.
+            # therefore multiline lambda definitions loose dependancy information
             source_code = inspect.getsource(fn)
 
             # exclude method name

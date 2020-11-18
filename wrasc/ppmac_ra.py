@@ -12,6 +12,7 @@ import csv
 import os
 import time
 import utils
+from fractions import Fraction
 
 """ ppmac basic agent. 
 This agent checks (watches) a list of statement conditions, 
@@ -35,7 +36,7 @@ and set id_done.
 
 macrostrs = ["{", "}"]
 
-ppmac_func_dict = {"EXP2": "2**"}
+ppmac_func_dict = {"EXP2": "2**", "int": "int", "Fraction": "Fraction"}
 
 regex_anynum = r"[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?"
 regex_exp_notification = r"[+-]?\d+(?:\.\d*(?:[eE][+-]?\d+)?)"
@@ -46,6 +47,8 @@ def default_asic_chan(axis):
 
 
 def stats_to_conds(cmd_stats):
+    if isinstance(cmd_stats, str):
+        cmd_stats = [cmd_stats]
     return [cond.replace("=", "==") if ("=" in cond) else cond for cond in cmd_stats]
 
 
@@ -165,8 +168,8 @@ def parse_vars(stat: str):
 
     # find exponential notations and convert them.
     # ppmac doesn't understand 5e-3
-    p_vars = re.findall(regex_anynum, stat)
-    for v in p_vars:
+    exp_nums = re.findall(regex_anynum, stat)
+    for v in exp_nums:
         if "e" in v.lower():
             stat = stat.replace(v, f"{float(v):.8f}")
 
@@ -326,7 +329,7 @@ def expand_pmac_stats(stats, **vars):
         except KeyError:
             # if there is a macro which can't be found in vars, then leave it!
             stats_out.append(stat)
-            raise KeyError(f"unresolved parameters; left for late binding:\n{stat_org}")
+            print(f"unresolved parameters; left for late binding:\n{stat_org}")
         except ValueError:
             # this is probably more serious...
             stats_out.append(stat)
@@ -348,10 +351,14 @@ def ppwr_poll_in(ag_self: ra.Agent):
     assert isinstance(ag_self, WrascPmacGate)
     ag_self: WrascPmacGate
 
+    # if the agent is just came out of inhibit, then reset all retries!
+    if not ag_self.act_on:
+        if ag_self.cry_tries != 0:
+            ag_self.cry_tries = 0
+
     # TODO: it is tricky here as a continuous poll is not always desired?
     if not ag_self.pass_conds_parsed or len(ag_self.pass_conds_parsed) < 1:
-        ag_self.poll.Var = True
-        return ra.StateLogics.Valid, "no checks"
+        return ra.StateLogics.Invalid, "no checks"
 
     # acquire left sides
     # TODO optimise this routine by:
@@ -360,57 +367,59 @@ def ppwr_poll_in(ag_self: ra.Agent):
 
     ag_self.receive_cond_parsed(ag_self.pass_conds_parsed)
 
-    for condition in ag_self.pass_conds_parsed:
-        # take templates and variables from inside the
-        # condisions and verify the statement
+    return ag_self.check_pass_conds()
 
-        verify_text, statement = ag_self.check_cond(condition)
+    # for condition in ag_self.pass_conds_parsed:
+    #     # take templates and variables from inside the
+    #     # condisions and verify the statement
 
-        if verify_text is None:
-            # major comms error, do not try the rest of the conditions?
-            return ra.StateLogics.Invalid, "comms error"
+    #     verify_text, statement = ag_self.check_cond(condition)
 
-        if verify_text == "err":
-            # this condition had some issues with syntax, continue with the rest
-            verify_text = verify_text
+    #     if verify_text is None:
+    #         # major comms error, do not try the rest of the conditions?
+    #         return ra.StateLogics.Invalid, "comms error"
 
-        if (verify_text.count("==") == 1) and ("'" not in verify_text):
-            one_sided_verify_text = verify_text.replace("==", " - (") + ")"
-            # TODO improve this, the whole scheme shall work on a numpy is_close instead of isequal:
-            # depending on the lvar, round off or not!
-            left_side = condition[1][0]  # type: str
-            qual = left_side.lower().split(".")[-1]
-            if qual.endswith("speed"):
-                precision = 1e-6
-            elif qual.endswith("gain"):
-                precision = 1.0e-7
-            elif qual.endswith("pwmsf"):
-                precision = 1  # probably wrong
-            elif qual.endswith("maxint"):
-                precision = 0.0625
-            elif qual.endswith("scalefactor"):
-                precision = 1e-16
-            else:
-                precision = 1e-16
+    #     if verify_text == "err":
+    #         # this condition had some issues with syntax, continue with the rest
+    #         verify_text = verify_text
 
-            try:
-                if abs(eval(one_sided_verify_text)) > precision:
-                    # if eval(verify_text) == False:
-                    # no need to check the rest of the conditions
+    #     if (verify_text.count("==") == 1) and ("'" not in verify_text):
+    #         one_sided_verify_text = verify_text.replace("==", " - (") + ")"
+    #         # TODO improve this, the whole scheme shall work on a numpy is_close instead of isequal:
+    #         # depending on the lvar, round off or not!
+    #         left_side = condition[1][0]  # type: str
+    #         qual = left_side.lower().split(".")[-1]
+    #         if qual.endswith("speed"):
+    #             precision = 1e-6
+    #         elif qual.endswith("gain"):
+    #             precision = 1.0e-7
+    #         elif qual.endswith("pwmsf"):
+    #             precision = 1  # probably wrong
+    #         elif qual.endswith("maxint"):
+    #             precision = 0.0625
+    #         elif qual.endswith("scalefactor"):
+    #             precision = 1e-16
+    #         else:
+    #             precision = 1e-16
 
-                    return (
-                        False,
-                        f"{statement}: {one_sided_verify_text} > {precision}",
-                    )
-                continue
-            except:
-                pass
-        # arithmentic error, check literal statement
-        if eval(verify_text) == False:
-            # no need to check the rest of the conditions
-            return False, f"{statement}: {verify_text} "
+    #         try:
+    #             if abs(eval(one_sided_verify_text)) > precision:
+    #                 # if eval(verify_text) == False:
+    #                 # no need to check the rest of the conditions
 
-    return True, "True"
+    #                 return (
+    #                     False,
+    #                     f"{statement}: {one_sided_verify_text} > {precision}",
+    #                 )
+    #             continue
+    #         except:
+    #             pass
+    #     # arithmentic error, check literal statement
+    #     if eval(verify_text) == False:
+    #         # no need to check the rest of the conditions
+    #         return False, f"{statement}: {verify_text} "
+
+    # return True, "True"
 
 
 def ppwr_act_on_valid(ag_self: ra.Agent):
@@ -673,6 +682,8 @@ class WrascPmacGate(ra.Agent):
         wait_after_celeb=None,
         **kwargs,
     ):
+
+        self.kwargs = {}
         self.pp_globals = {}
 
         self.wait_after_celeb = None
@@ -748,6 +759,10 @@ class WrascPmacGate(ra.Agent):
          "=" in statements will be replaced by "==". non-statement commands will be ignored.
         """
 
+        if kwargs:
+            # merge with existing
+            self.kwargs = {**self.kwargs, **kwargs}
+
         if wait_after_celeb:
             self.wait_after_celeb = wait_after_celeb
 
@@ -758,17 +773,17 @@ class WrascPmacGate(ra.Agent):
         # so its best to esxpand them here
 
         self.fetch_cmds = expand_pmac_stats(
-            fetch_cmds if fetch_cmds else self.fetch_cmds, **kwargs
+            fetch_cmds if fetch_cmds else self.fetch_cmds, **self.kwargs
         )
         self.fetch_cmds_parsed = parse_cmds(self.fetch_cmds)
 
         self.cry_cmds = expand_pmac_stats(
-            cry_cmds if cry_cmds else self.cry_cmds, **kwargs
+            cry_cmds if cry_cmds else self.cry_cmds, **self.kwargs
         )
         self.cry_cmds_parsed = parse_cmds(self.cry_cmds)
 
         self.celeb_cmds = expand_pmac_stats(
-            celeb_cmds if celeb_cmds else self.celeb_cmds, **kwargs
+            celeb_cmds if celeb_cmds else self.celeb_cmds, **self.kwargs
         )
         self.celeb_cmds_parsed = parse_cmds(self.celeb_cmds)
 
@@ -780,63 +795,63 @@ class WrascPmacGate(ra.Agent):
             pass_conds = stats_to_conds(cry_cmds)
 
         self.pass_conds = expand_pmac_stats(
-            pass_conds if pass_conds else self.pass_conds, **kwargs
+            pass_conds if pass_conds else self.pass_conds, **self.kwargs
         )
         self.pass_conds_parsed = parse_stats(self.pass_conds)
 
         # pass_logs_parsed need to be fetched with pass_conds_parsed, stored, and logged at celeb.
         self.pass_logs = expand_pmac_stats(
-            pass_logs if pass_logs else self.pass_logs, **kwargs
+            pass_logs if pass_logs else self.pass_logs, **self.kwargs
         )
         self.pass_logs_parsed = parse_stats(self.pass_logs)
 
         if csv_file_path:
             self.csv_file_name = csv_file_path
 
-        # setup the headers, they get written when (and only if) the first set of readings are ready
-        if self.pass_logs_parsed:
-            headers = ["Time"] + list(list(zip(*self.pass_logs_parsed))[2])
-            # remove and reshape special caharacters headers
+            # setup the headers, they get written when (and only if) the first set of readings are ready
+            if self.pass_logs_parsed:
+                headers = ["Time"] + list(list(zip(*self.pass_logs_parsed))[2])
+                # remove and reshape special caharacters headers
 
-            headers = [normalise_header(header) for header in headers]
+                headers = [normalise_header(header) for header in headers]
 
-            self.csvcontent = ",".join(map(str, headers)) + "\n"
+                self.csvcontent = ",".join(map(str, headers)) + "\n"
 
-            if self.csvcontent and self.csv_file_name:
+                if self.csvcontent and self.csv_file_name:
 
-                # time_stamp the filename
-                self.csv_file_stamped = utils.time_stamp(self.csv_file_name)
+                    # time_stamp the filename
+                    self.csv_file_stamped = utils.time_stamp(self.csv_file_name)
 
-                # if file exists, make a backup of the existing file
-                # do not leave until the file doesn't exist!
-                n_copies = 0
-                while os.path.exists(self.csv_file_stamped):
-                    name, ext = os.path.splitext(self.csv_file_stamped)
-                    modif_time_str = time.strftime(
-                        "%y%m%d_%H%M",
-                        time.localtime(os.path.getmtime(self.csv_file_stamped)),
-                    )
-                    n_copies_str = f"({n_copies})" if n_copies > 0 else ""
-                    try:
-                        os.rename(
-                            self.csv_file_stamped,
-                            f"{name}_{modif_time_str}{n_copies_str}{ext}",
+                    # if file exists, make a backup of the existing file
+                    # do not leave until the file doesn't exist!
+                    n_copies = 0
+                    while os.path.exists(self.csv_file_stamped):
+                        name, ext = os.path.splitext(self.csv_file_stamped)
+                        modif_time_str = time.strftime(
+                            "%y%m%d_%H%M",
+                            time.localtime(os.path.getmtime(self.csv_file_stamped)),
                         )
-                    except FileExistsError:
-                        # forget it... the file is already archived...
-                        # TODO or you need to be too fussy and break the execution for this?
-                        n_copies += 1
+                        n_copies_str = f"({n_copies})" if n_copies > 0 else ""
+                        try:
+                            os.rename(
+                                self.csv_file_stamped,
+                                f"{name}_{modif_time_str}{n_copies_str}{ext}",
+                            )
+                        except FileExistsError:
+                            # forget it... the file is already archived...
+                            # TODO or you need to be too fussy and break the execution for this?
+                            n_copies += 1
 
-                open(self.csv_file_stamped, "w+")
-        else:
-            # self.log_vals = []
-            self.csvcontent = None
+                    open(self.csv_file_stamped, "w+")
+            else:
+                # self.log_vals = []
+                self.csvcontent = None
 
         # TODO change this crap[ solution
         # floating digits used for == comparison
         self.ndigits = 6
 
-        super().setup(**kwargs)
+        super().setup(**self.kwargs)
 
     def eval_cmd(self, cmds_str):
 
@@ -913,7 +928,11 @@ class WrascPmacGate(ra.Agent):
 
             evaluated_stat = evaluated_stat.replace(f"_var_{i}", ret_val)
         # ppmac is a non case sensitive system, so return comparison statement in lower case
-        return evaluated_stat.lower(), statement
+
+        return (
+            evaluated_stat.lower() if "'" in evaluated_stat else evaluated_stat,
+            statement,
+        )
 
     def receive_cond_parsed(self, stats_parsed):
         """
@@ -947,22 +966,16 @@ class WrascPmacGate(ra.Agent):
         evaluated_stat, l_vars, statement = condition
 
         for i, l_var in enumerate(l_vars):
-            # # acquire the variable to check
-            # tpl = self.ppmac.send_receive_raw(l_var)
-
-            # if not tpl[1]:
-            #     self.poll.Var = None
-            #     evaluated_stat = "Err"
-            #     break
-            #     # return ra.StateLogics.Invalid, "comms error"
-
-            # ret_val = tpl[0][1].strip("\n").strip(" ").strip("'").split("=")[-1]
 
             l_var = l_var.lower()  # type: str
             if l_var not in self.ppmac_key_val:
                 print("gooz")
 
             ret_val = self.ppmac_key_val[l_var]["val"]
+
+            if "fraction" in condition[0].lower():
+                # choss
+                _ = condition[0].lower()
 
             if not isPmacNumber(ret_val):
                 # treat this return as string
@@ -974,7 +987,64 @@ class WrascPmacGate(ra.Agent):
 
             evaluated_stat = evaluated_stat.replace(f"_var_{i}", ret_val)
         # ppmac is a non case sensitive system, so return comparison statement in lower case
-        return evaluated_stat.lower(), statement
+        return (
+            evaluated_stat.lower() if "'" in evaluated_stat else evaluated_stat,
+            statement,
+        )
+
+    def check_pass_conds(self):
+
+        for condition in self.pass_conds_parsed:
+            # take templates and variables from inside the
+            # condisions and verify the statement
+
+            verify_text, statement = self.check_cond(condition)
+
+            if verify_text is None:
+                # major comms error, do not try the rest of the conditions?
+                return ra.StateLogics.Invalid, "comms error"
+
+            if verify_text == "err":
+                # this condition had some issues with syntax, continue with the rest
+                verify_text = verify_text
+
+            if (verify_text.count("==") == 1) and ("'" not in verify_text):
+                one_sided_verify_text = verify_text.replace("==", " - (") + ")"
+                # TODO improve this, the whole scheme shall work on a numpy is_close instead of isequal:
+                # depending on the lvar, round off or not!
+                left_side = condition[1][0]  # type: str
+                qual = left_side.lower().split(".")[-1]
+                if qual.endswith("speed"):
+                    precision = 1e-6
+                elif qual.endswith("gain"):
+                    precision = 1.0e-7
+                elif qual.endswith("pwmsf"):
+                    precision = 1  # probably wrong
+                elif qual.endswith("maxint"):
+                    precision = 0.0625
+                elif qual.endswith("scalefactor"):
+                    precision = 1e-16
+                else:
+                    precision = 1e-16
+
+                try:
+                    if abs(eval(one_sided_verify_text)) > precision:
+                        # if eval(verify_text) == False:
+                        # no need to check the rest of the conditions
+
+                        return (
+                            False,
+                            f"{statement}: {one_sided_verify_text} > {precision}",
+                        )
+                    continue
+                except:
+                    pass
+            # arithmentic error, check literal statement
+            if eval(verify_text) == False:
+                # no need to check the rest of the conditions
+                return False, f"{statement}: {verify_text} "
+
+        return True, "True"
 
     @property
     def is_done(self):
@@ -990,6 +1060,10 @@ class WrascPmacGate(ra.Agent):
             return True
         else:
             return False
+
+    def reset(self):
+        self.poll.force(None, immediate=False)
+        self.act.force(None, immediate=True)
 
     def acquire_log(self):
         """
@@ -1042,6 +1116,9 @@ class WrascPmacGate(ra.Agent):
             resp = self.ppmac.send_receive_raw(self.eval_cmd(self.celeb_cmds_parsed))
         else:
             resp = ""
+
+        # in any case reset cry_tries = 0
+        self.cry_tries = 0
 
         # if this is a staged-pass then
         # stop checking the condition. Stage is now passed.
@@ -1150,9 +1227,7 @@ def arm_to_quit_aov(ag_self: ra.Agent):
             assert isinstance(ag, ra.Agent)
 
             # only reset ags which are below this control agent
-
-            ag.poll.force(None, immediate=False)
-            ag.act.force(None, immediate=True)
+            ag.reset()
 
         ag_self.repeats -= 1
 
@@ -1178,8 +1253,7 @@ def quit_act_aoa(ag_self: ra.Agent):
 
     if not ag_self.quit_if_done:
         ag_self.repeats = 30
-        ag_self.poll.force(None, immediate=False)
-        ag_self.act.force(None, immediate=True)
+        ag_self.reset()
         return ra.StateLogics.Done, "RA_WHATEVER"
 
     if ag_self.poll.Var:

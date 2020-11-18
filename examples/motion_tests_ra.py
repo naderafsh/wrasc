@@ -199,8 +199,6 @@ class OL_RDB_Mlim(ra.Device):
             cry_cmds=[],
             pass_logs=default_pass_logs,
             csv_file_path=path.join("autest_out", "ma_small_steps.csv"),
-            celeb_cmds=["#{L1}jog:{smalljog_steps}"],
-            wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
             ongoing=True,
             poll_pr=(
                 lambda ag_self: not ag_self.owner.ma_start_pos_ag.inhibited
@@ -369,12 +367,20 @@ class OL_Rdb_Lim2Lim(ra.Device):
         )
         enc_res = tst["Mot_A"]["encoder_res"]
         tst["Mot_A"]["smalljog_steps"] = tst["Mot_A"]["smalljog_egu"] / step_res
+        tst["Mot_A"]["bigjog_steps"] = tst["Mot_A"]["bigjog_egu"] / step_res
+
+        tst["Mot_A"]["jog_step_ratio"] = (
+            tst["Mot_A"]["bigjog_egu"] / tst["Mot_A"]["smalljog_egu"]
+        )
         tst["Mot_A"]["HomeOffset"] = tst["Mot_A"]["HomeOffset_EGU"] / step_res
         tst["Mot_A"]["attackpos_enc"] = (
             tst["Mot_A"]["attackpos_egu"] + tst["Mot_A"]["HomeOffset_EGU"]
         ) / enc_res
         tst["Mot_A"]["JogSpeed"] = tst["Mot_A"]["JogSpeed_EGU"] / step_res / 1000
         tst["Mot_A"]["HomeVel"] = tst["Mot_A"]["HomeVel_EGU"] / step_res / 1000
+
+        tst["Mot_A"]["fullrange_steps"] = tst["Mot_A"]["fullrange_egu"] / step_res
+
         clearance_enc = tst["clearance_egu"] / enc_res
 
         self.test_ppmac = ppra.PPMAC(
@@ -398,7 +404,6 @@ class OL_Rdb_Lim2Lim(ra.Device):
         ################################################################################################################
 
         # -1 - check configuration
-
         # -------- motor A
         config_cmds = ppra.expand_globals(base_config, pp_glob_dict, **tst["Mot_A"])
         self.ma_base_config_ag = ppra.WrascPmacGate(
@@ -413,7 +418,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             celeb_cmds="#{L1}$",
         )
 
-        # to ensure plc type config files take effect,
+        # to ensure config files with high level language aspects take effect,
         # the config may need to be applied more than one time.
         # this is because some statements refer to other settings
         # which may change during download.
@@ -486,7 +491,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             **tst["Mot_A"],
             #
             pass_conds=tls.is_on_plim_inpos,
-            cry_cmds=["#{L1}jog+"],
+            # cry_cmds=["#{L1}jog+"],
             #
             pass_logs=default_pass_logs,
             csv_file_path=path.join("autest_out", "ma_slide_on_plim.csv"),
@@ -495,39 +500,16 @@ class OL_Rdb_Lim2Lim(ra.Device):
             wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
         )
 
-        # -------------------------------------------------------------------
-        # 1 - settles at staring point
-        self.ma_start_pos_ag = ppra.WrascPmacGate(
-            owner=self,
-            verbose=_VERBOSE_,
-            ppmac=self.test_ppmac,
-            **tst["Mot_A"],
-            pass_conds=[
-                "Motor[L1].InPos==1",
-                "#{L7}p > {attackpos_enc} + Motor[L7].CapturedPos",
-            ],
-        )
-
-        # -------------------------------------------------------------------
-        # 1.1 - Step towards the staring point
-
         # -------- motor A
-        self.ma_step_until_ag = ppra.WrascPmacGate(
+        self.ma_step_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
             **tst["Mot_A"],
-            pass_conds="Motor[L1].InPos==1",
-            cry_cmds=[],
-            pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_small_steps.csv"),
-            celeb_cmds=["#{L1}jog:{smalljog_steps}"],
             wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
-            ongoing=True,
-            poll_pr=(
-                lambda ag_self: not ag_self.owner.ma_start_pos_ag.inhibited
-                and ag_self.owner.ma_start_pos_ag.poll.Var is False
-            ),
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join("autest_out", "ma_step.csv"),
         )
 
         self.ma_slide_off_plim_ag = ppra.WrascPmacGate(
@@ -541,10 +523,10 @@ class OL_Rdb_Lim2Lim(ra.Device):
                 "Motor[L1].JogSpeed={HomeVel}",
                 "#{L7}j:{SlideOff_Dir}{slideoff_steps}",
                 "Motor[L7].CapturePos=1",
-                "#{L1}j:-{HomeOffset}",
+                "#{L1}j={fullrange_steps}",
             ],
             SlideOff_Dir="-",
-            cry_retries=20,
+            cry_retries=1,
             #
             pass_logs=default_pass_logs,
             csv_file_path=path.join("autest_out", "ma_slide_off_plim.csv"),
@@ -567,7 +549,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             **tst["Mot_A"],
             #
             pass_conds=tls.is_on_mlim_inpos,
-            cry_cmds=["#{L1}jog-"],
+            # cry_cmds=["#{L1}jog-"],
             #
             pass_logs=default_pass_logs,
             csv_file_path=path.join("autest_out", "ma_slide_on_mlim.csv"),
@@ -606,16 +588,6 @@ class OL_Rdb_Lim2Lim(ra.Device):
             wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
         )
 
-        # -------------------------------------------------------------------
-
-        # now setup a sequencer
-        self.inner_loop_ag = ppra.WrascRepeatUntil(verbose=_VERBOSE_)
-        # one cycle is already done so total number of repeats - 1 shall be repeated by the sequencer
-        self.inner_loop_ag.repeats = tst["loop_repeats"] - 1
-
-        # ----------------------------------------------------------------------
-
-        # -------------------------------------------------------------------
         # -------------------------------------------------------------------
         self.kill_on_collision_ag = ppra.WrascPmacGate(
             owner=self,
@@ -666,8 +638,13 @@ class OL_Rdb_Lim2Lim(ra.Device):
             lambda ag_self: ag_self.owner.ma_go_mlim_ag.is_done
         )
 
-        self.ma_start_pos_ag.poll_pr = lambda ag_self: False
+        # self.ma_start_pos_ag.poll_pr = lambda ag_self: False
 
+        self.ma_step_ag.poll_pr = lambda ag_self: True
+
+        # everything below the first line are excluded from dependency compilation
+        # due to a BUG in reactive_agent ! otherwise the forwards and back would
+        # create an illegal circular dependency
         # setup the sequence default dependency (can be done automaticatlly)
         self.ma_slide_on_plim_ag.poll_pr = (
             lambda ag_self: ag_self.owner.ma_home_on_mlim_ag.is_done
@@ -684,13 +661,6 @@ class OL_Rdb_Lim2Lim(ra.Device):
             lambda ag_self: ag_self.owner.ma_slide_on_mlim_ag.is_done
         )
 
-        self.inner_loop_ag.all_done_ag = self.ma_slide_off_mlim_ag
-        self.inner_loop_ag.reset_these_ags = [
-            self.ma_slide_on_plim_ag,
-            self.ma_slide_off_plim_ag,
-            self.ma_slide_on_mlim_ag,
-            self.ma_slide_off_mlim_ag,
-        ]
         # ----------------------------------------------------------------------
 
 
