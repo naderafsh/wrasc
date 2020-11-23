@@ -196,9 +196,9 @@ class OL_RDB_Mlim(ra.Device):
             ppmac=self.test_ppmac,
             **tst["Mot_A"],
             pass_conds="Motor[L1].InPos==1",
-            cry_cmds=[],
+            celeb_cmds=["#{L1}jog:{smalljog_steps}"],
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_small_steps.csv"),
+            csv_file_path=path.join("autest_out", "ma_small_until.csv"),
             ongoing=True,
             poll_pr=(
                 lambda ag_self: not ag_self.owner.ma_start_pos_ag.inhibited

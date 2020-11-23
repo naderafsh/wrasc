@@ -8,8 +8,7 @@ from examples.motion_tests_ra import OL_Rdb_Lim2Lim
 import utils
 from time import sleep
 
-
-tst = utils.undump_obj("sample_test", "autest_in")
+tst = utils.undump_obj("ol_direct_sample", "autest_in")
 ol_test = OL_Rdb_Lim2Lim(_VERBOSE_=2, tst=tst)
 agents = ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01")
 max_loop = 100
