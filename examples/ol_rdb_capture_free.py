@@ -104,7 +104,7 @@ ol_test.test_ppmac.close
 
 # now load the csv file and plot
 
-filename = ol_test.ma_step_until_ag.csv_file_stamped
+filename = ol_test.ma_jog_until_ag.csv_file_stamped
 print(f"here is the log file: {filename}")
 
 import matplotlib.pyplot as plt

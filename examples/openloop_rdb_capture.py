@@ -203,7 +203,7 @@ ma_start_pos_ag = ppra.WrascPmacGate(
 # 1.1 - Step towards the staring point
 
 # -------- motor A
-ma_step_until_ag = ppra.WrascPmacGate(
+ma_jog_until_ag = ppra.WrascPmacGate(
     verbose=_VERBOSE_,
     ppmac=test_ppmac_A,
     **tst["Mot_A"],
@@ -221,7 +221,7 @@ ma_step_until_ag = ppra.WrascPmacGate(
 )
 
 # step until will be active everytime the ma_start_pos_ag is not on hold
-# ma_step_until_ag.poll_pr = (
+# ma_jog_until_ag.poll_pr = (
 #     lambda ag_self: not ma_start_pos_ag.inhibited and ma_start_pos_ag.poll.Var is False
 # )
 
@@ -362,7 +362,7 @@ test_ppmac.close
 
 # now load the csv file and plot
 
-filename = ma_step_until_ag.csv_file_stamped
+filename = ma_jog_until_ag.csv_file_stamped
 print(f"here is the log file: {filename}")
 
 import matplotlib.pyplot as plt

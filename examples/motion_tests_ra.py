@@ -190,7 +190,7 @@ class OL_RDB_Mlim(ra.Device):
         # 1.1 - Step towards the staring point
 
         # -------- motor A
-        self.ma_step_until_ag = ppra.WrascPmacGate(
+        self.ma_jog_until_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
@@ -207,7 +207,7 @@ class OL_RDB_Mlim(ra.Device):
         )
 
         # step until will be active everytime the self.ma_start_pos_ag is not on hold
-        # self.ma_step_until_ag.poll_pr = (
+        # self.ma_jog_until_ag.poll_pr = (
         #     lambda ag_self: not self.ma_start_pos_ag.inhibited and self.ma_start_pos_ag.poll.Var is False
         # )
 
@@ -501,7 +501,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
         )
 
         # -------- motor A
-        self.ma_step_ag = ppra.WrascPmacGate(
+        self.ma_jog_pos_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
@@ -509,7 +509,18 @@ class OL_Rdb_Lim2Lim(ra.Device):
             wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_step.csv"),
+            csv_file_path=path.join("autest_out", "ma_jog_pos.csv"),
+        )
+
+        self.ma_jog_neg_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst["Mot_A"],
+            wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join("autest_out", "ma_jog_neg.csv"),
         )
 
         self.ma_slide_off_plim_ag = ppra.WrascPmacGate(
@@ -640,7 +651,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
 
         # self.ma_start_pos_ag.poll_pr = lambda ag_self: False
 
-        self.ma_step_ag.poll_pr = lambda ag_self: True
+        self.ma_jog_pos_ag.poll_pr = lambda ag_self: True
 
         # everything below the first line are excluded from dependency compilation
         # due to a BUG in reactive_agent ! otherwise the forwards and back would
@@ -662,6 +673,21 @@ class OL_Rdb_Lim2Lim(ra.Device):
         )
 
         # ----------------------------------------------------------------------
+
+    def jog_agent(self, jog_dest, is_positive_jog):
+
+        if is_positive_jog:
+            ineq = ">" + str(jog_dest) + " - 10"
+            jog_agent = self.ma_jog_pos_ag
+        else:
+            ineq = "<" + str(jog_dest) + " + 10"
+            jog_agent = self.ma_jog_neg_ag
+
+        jog_agent.setup(
+            cry_cmds="#{L1}jog=" + str(jog_dest), pass_conds="#{L1}p" + ineq,
+        )
+
+        return jog_agent
 
 
 if __name__ == "__main__":

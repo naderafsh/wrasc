@@ -14,44 +14,10 @@ agents = ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01")
 max_loop = 100
 
 
-def do_agent(ag_list):
-    """process an individual ppra agent, separately
-
-    Args:
-        ag_self (ppra.WrascPmacGate): [description]
-
-    Returns:
-        [type]: [description]
-    """
-
-    if not isinstance(ag_list, list):
-        ag_list = [ag_list]
-
-    for ag in ag_list:
-        ag.reset()
-
-    while not any([ag.is_done for ag in ag_list]):
-
-        for ag_self in ag_list:
-            ag_self: ppra.WrascPmacGate
-            ag_self._in_proc()
-
-            desc = ""
-            if ag_self.verbose > 0:
-                desc = ag_self.annotate()[1]
-                print(f"{ag_self.name}: {desc}")
-
-        sleep(0.25)
-
-        for ag_self in ag_list:
-            ag_self: ppra.WrascPmacGate
-            ag_self._out_proc()
-
-
-do_agent(ol_test.ma_base_config_ag)
-do_agent(ol_test.ma_test_config_ag)
-do_agent(ol_test.ma_go_mlim_ag)
-do_agent(ol_test.ma_home_on_mlim_ag)
+ppra.process_agents(ol_test.ma_base_config_ag)
+ppra.process_agents(ol_test.ma_test_config_ag)
+ppra.process_agents(ol_test.ma_go_mlim_ag)
+ppra.process_agents(ol_test.ma_home_on_mlim_ag)
 
 i = 0
 while i < tst["loop_repeats"]:
@@ -59,55 +25,57 @@ while i < tst["loop_repeats"]:
 
     n = 0
     jog_dest = 0
+    overall_positive = True
     while n < max_loop:
 
-        if (n % 2) == 0:
-            jog_dest = jog_dest + tst["Mot_A"]["bigjog_steps"]
-            ineq = ">" + str(jog_dest) + " - 10"
+        is_big_jog = (n % 2) == 0
+        is_positive_jog = is_big_jog == overall_positive
 
-        else:
-            jog_dest = (
-                jog_dest - tst["Mot_A"]["bigjog_steps"] + tst["Mot_A"]["smalljog_steps"]
+        if is_big_jog:
+            jog_dest = jog_dest + tst["Mot_A"]["bigjog_steps"] * (
+                1 if is_positive_jog else -1
             )
-            ineq = "<" + str(jog_dest) + " + 10"
+        else:
+            jog_dest = jog_dest + (
+                -tst["Mot_A"]["bigjog_steps"] + tst["Mot_A"]["smalljog_steps"]
+            ) * (1 if is_positive_jog else -1)
 
-        ol_test.ma_step_ag.setup(
-            cry_cmds="#{L1}jog=" + str(jog_dest), pass_conds="#{L1}p" + ineq,
+        ppra.process_agents(
+            [ol_test.ma_slide_on_plim_ag, ol_test.jog_agent(jog_dest, is_positive_jog)]
         )
-
-        do_agent([ol_test.ma_slide_on_plim_ag, ol_test.ma_step_ag])
         if ol_test.ma_slide_on_plim_ag.is_done:
             break
         else:
             n += 1
+            print(f"step {n}")
 
-    do_agent(ol_test.ma_slide_off_plim_ag)
+    ppra.process_agents(ol_test.ma_slide_off_plim_ag)
 
     n = 0
     jog_dest = tst["Mot_A"]["fullrange_steps"]
+    overall_positive = False
     while n < max_loop:
+        is_big_jog = (n % 2) == 0
+        is_positive_jog = is_big_jog == overall_positive
 
-        if (n % 2) == 0:
-            jog_dest = jog_dest - tst["Mot_A"]["bigjog_steps"]
-            ineq = "<" + str(jog_dest) + " + 10"
-
-        else:
-            jog_dest = (
-                jog_dest + tst["Mot_A"]["bigjog_steps"] - tst["Mot_A"]["smalljog_steps"]
+        if is_big_jog:
+            jog_dest = jog_dest + tst["Mot_A"]["bigjog_steps"] * (
+                1 if is_positive_jog else -1
             )
-            ineq = ">" + str(jog_dest) + " - 10"
+        else:
+            jog_dest = jog_dest + (
+                -tst["Mot_A"]["bigjog_steps"] + tst["Mot_A"]["smalljog_steps"]
+            ) * (1 if is_positive_jog else -1)
 
-        ol_test.ma_step_ag.setup(
-            cry_cmds="#{L1}jog=" + str(jog_dest), pass_conds="#{L1}p" + ineq,
+        ppra.process_agents(
+            [ol_test.ma_slide_on_mlim_ag, ol_test.jog_agent(jog_dest, is_positive_jog)]
         )
-
-        do_agent([ol_test.ma_slide_on_mlim_ag, ol_test.ma_step_ag])
         if ol_test.ma_slide_on_mlim_ag.is_done:
             break
         else:
             n += 1
 
-    do_agent(ol_test.ma_slide_off_mlim_ag)
+    ppra.process_agents(ol_test.ma_slide_off_mlim_ag)
 
 
 print("go celebrate now!")

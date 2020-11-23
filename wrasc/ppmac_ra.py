@@ -307,8 +307,6 @@ def expand_pmac_stats(stats, **vars):
             continue
 
         # support base L# format by reverting L# to {L#}
-        # stat = re.sub(r"(\[)(?=L\d)", "[{", stat)
-        # stat = re.sub(r"(?<=L\d)(\])", "}]", stat)
 
         # find L# except the ones already in {}
         l_vars = re.findall(r"(?<=[^\w{])(L\d)(?:[^\w{])", stat)
@@ -320,9 +318,6 @@ def expand_pmac_stats(stats, **vars):
                 .replace("{{", "{")
                 .replace("}}", "}")
             )
-
-        # if any(str_ in stat for str_ in ["{{", "}}"]):
-        #     raise RuntimeError(f"invalid stat syntax {stat}")
 
         try:
             stats_out.append(stat.format(**vars))
@@ -369,58 +364,6 @@ def ppwr_poll_in(ag_self: ra.Agent):
 
     return ag_self.check_pass_conds()
 
-    # for condition in ag_self.pass_conds_parsed:
-    #     # take templates and variables from inside the
-    #     # condisions and verify the statement
-
-    #     verify_text, statement = ag_self.check_cond(condition)
-
-    #     if verify_text is None:
-    #         # major comms error, do not try the rest of the conditions?
-    #         return ra.StateLogics.Invalid, "comms error"
-
-    #     if verify_text == "err":
-    #         # this condition had some issues with syntax, continue with the rest
-    #         verify_text = verify_text
-
-    #     if (verify_text.count("==") == 1) and ("'" not in verify_text):
-    #         one_sided_verify_text = verify_text.replace("==", " - (") + ")"
-    #         # TODO improve this, the whole scheme shall work on a numpy is_close instead of isequal:
-    #         # depending on the lvar, round off or not!
-    #         left_side = condition[1][0]  # type: str
-    #         qual = left_side.lower().split(".")[-1]
-    #         if qual.endswith("speed"):
-    #             precision = 1e-6
-    #         elif qual.endswith("gain"):
-    #             precision = 1.0e-7
-    #         elif qual.endswith("pwmsf"):
-    #             precision = 1  # probably wrong
-    #         elif qual.endswith("maxint"):
-    #             precision = 0.0625
-    #         elif qual.endswith("scalefactor"):
-    #             precision = 1e-16
-    #         else:
-    #             precision = 1e-16
-
-    #         try:
-    #             if abs(eval(one_sided_verify_text)) > precision:
-    #                 # if eval(verify_text) == False:
-    #                 # no need to check the rest of the conditions
-
-    #                 return (
-    #                     False,
-    #                     f"{statement}: {one_sided_verify_text} > {precision}",
-    #                 )
-    #             continue
-    #         except:
-    #             pass
-    #     # arithmentic error, check literal statement
-    #     if eval(verify_text) == False:
-    #         # no need to check the rest of the conditions
-    #         return False, f"{statement}: {verify_text} "
-
-    # return True, "True"
-
 
 def ppwr_act_on_valid(ag_self: ra.Agent):
     """
@@ -465,8 +408,6 @@ def ppwr_act_on_armed(ag_self: ra.Agent):
             raise RuntimeError(
                 f"{ag_self.name}: writing log {ag_self.csvcontent} to file "
             )
-
-    # ag_self.act.hold(for_cycles=-1, reset_var=False)
 
     return ra.StateLogics.Done, "Done, act on hold."
 
@@ -1345,6 +1286,40 @@ class PpmacMotorShell(object):
     Args:
         object ([type]): [description]
     """
+
+
+def process_agents(ag_list):
+    """process a list of ppra agent, separately
+
+    Args:
+        ag_self (ppra.WrascPmacGate): [description]
+
+    Returns:
+        [type]: [description]
+    """
+
+    if not isinstance(ag_list, list):
+        ag_list = [ag_list]
+
+    for ag in ag_list:
+        ag.reset()
+
+    while not any([ag.is_done for ag in ag_list]):
+
+        for ag_self in ag_list:
+            ag_self: WrascPmacGate
+            ag_self._in_proc()
+
+            desc = ""
+            if ag_self.verbose > 0:
+                desc = ag_self.annotate()[1]
+                print(f"{ag_self.name}: {desc}")
+
+        sleep(0.25)
+
+        for ag_self in ag_list:
+            ag_self: WrascPmacGate
+            ag_self._out_proc()
 
 
 if __name__ == "__main__":
