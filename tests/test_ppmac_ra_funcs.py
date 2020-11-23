@@ -7,10 +7,15 @@ JogSpeed = 1.28
 
 motor = ppra.axis(8)
 
+Attack_Pos_Enc = 9898
+
 # this sets LVars into locals...
 locals().update(motor.LVars())
 
 test_stats = {
+    "#{L7}p > {Attack_Pos_Enc} + Motor[L7].CapturedPos": [
+        "#16p > 9898 + Motor[16].CapturedPos"
+    ],
     "Motor[{L1}].JogSpeed={JogSpeed}": ["Motor[8].JogSpeed=1.28"],
     "Motor[L7].EncType=Gate[L2].Blaaa": ["Motor[16].EncType=Gate[1].Blaaa"],
     "#{L1}j=#{L3}p - 100": ["#8j=#3p - 100"],
@@ -30,11 +35,15 @@ given_2 = 2
 
 
 test_stats = {
+    "int(#{L1}p/{smalljog_steps}/2)<1": ["int(#1p/5/2)<1"],
     "{given_1} = {{given_2}} - {{given_1}}": ["1 = {given_2} - {given_1}"],
     "{given_1} = {{ungiven}} - {{given_1}}": ["1 = {ungiven} - {given_1}"],
     f"{given_1} = {{given_2}} - {{given_1}}": ["1 = 2 - 1"],
     f"{given_1} = {{ungiven}} - {{given_1}}": ["1 = {ungiven} - {given_1}"],
 }
+
+L1 = 1
+smalljog_steps = 5
 
 for stat in test_stats:
     stat_out = ppra.expand_pmac_stats(stat, **locals())
@@ -43,9 +52,10 @@ for stat in test_stats:
 print("expand_pmac_stats test 2 passed.")
 
 # now testing pars_cond function
-testing_func = ppra.pars_conds
+testing_func = ppra.parse_stats
 
 test_stats = {
+    "int(#1p/5/2)<1": [["int(_var_0/5/2)<1", ["#1p"], "int(#1p/5/2)<1"]],
     "EncTable[L1].ScaleFactor=1 / (256 )": [
         [
             "_var_0=1/(256)",

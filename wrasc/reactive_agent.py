@@ -1086,6 +1086,8 @@ def compile_dependencies(_agents_list, script_globals):
             if fn is None:
                 continue
 
+            # BUG it seems that getsource truncates lambda functions after first \n.
+            # therefore multiline lambda definitions loose dependancy information
             source_code = inspect.getsource(fn)
 
             # exclude method name
@@ -1258,7 +1260,7 @@ def compile_dependencies(_agents_list, script_globals):
         lc += 1
         layer_updated = False
         for _this_ag in _agents_list:
-            _this_ag_obj = _this_ag[1]  # type: assert isinstance(Agent, object)
+            _this_ag_obj = _this_ag[1]
             _this_ag_fullname = _this_ag_obj.name
 
             if _this_ag_obj.layer is None:
@@ -1530,7 +1532,9 @@ def process_loop(agents_sorted_by_layer, n_loop=1000000, cycle_period=0.5, debug
             if debug:
                 print("states = {}".format(state_record))
             print(
-                "end of cycle {}, {:.3f}s".format(i, run_time),
+                "end of cycle {}, {:.3f}s, average lag={:.3f}s".format(
+                    i, run_time, run_time / i - cycle_period
+                ),
                 end="\n ====================================== \n",
             )
 

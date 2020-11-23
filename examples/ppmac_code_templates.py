@@ -1,3 +1,38 @@
+import regex as re
+
+
+"""
+it seems that the capture flag is being consumed, 
+as only one capture can be RELIABLY done upon one flag fall
+example:
+
+Motor[3].JogSpeed=2.4 #3j-
+#11kill
+#11j:+6274^10 Motor[11].CapturePos=1
+Motor[3].JogSpeed=0.1 #3j:+2000    
+
+captures Motor[11], but not Motor[3]
+
+opposite:
+
+Motor[L1].JogSpeed=2.4 #3j-
+#11kill
+#11j:+6274^10 Motor[11].CapturePos=1
+Motor[3].JogSpeed=0.1 #3j:+2000^100
+
+and 
+
+Motor[L1].JogSpeed=2.4 #3j-
+#11kill
+#11j:+6274^10 Motor[11].CapturePos=1
+Motor[3].JogSpeed=0.1 #3j:+2000 Motor[3].CapturePos=1    
+
+only capture Motor[3], not Motor[11]
+
+
+"""
+
+
 def assert_pos_wf(xx: int, target_pos, tol):
     """
 
@@ -27,30 +62,7 @@ def assert_pos_wf(xx: int, target_pos, tol):
     )
 
 
-baseConfigFileName = (
-    r"C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg"
-)
-
-with open(baseConfigFileName) as f:
-    base_config = f.read().splitlines()
-    f.close
-
-verify_base_config = [
-    cond.replace("=", "==") if ("=" in cond) else cond for cond in base_config
-]
-
-
-pp_global_filename = (
-    r"C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym"
-)
-with open(pp_global_filename) as f:
-    pp_global = f.read().splitlines()
-    f.close
-
-pp_globals = [g.split("\t") for g in pp_global]
-
-
-config_rdb_lmt = [
+config_rdb_capt = [
     # "Motor[L7].PosSf = {encoder_possf}",
     # "EncTable[L7].ScaleFactor = -1/256",
     # put EncType first, as it resets pCaptFlag and pCaptPos !!!!
@@ -70,44 +82,49 @@ config_rdb_lmt = [
     "Motor[L1].CaptureMode=0",
     "PowerBrick[L2].Chan[L3].CaptCtrl=10",
     "Motor[L1].JogSpeed={JogSpeed}",
+    "Motor[L7].JogSpeed=0.02",
 ]
 
 verify_config_rdb_lmt = [
-    cond.replace("=", "==") if ("=" in cond) else cond for cond in config_rdb_lmt
+    cond.replace("=", "==") if ("=" in cond) else cond for cond in config_rdb_capt
 ]
 
-jog_capt_rbk_tl = [
-    "Motor[L7].CapturePos=1",
-    "Motor[L1].JogSpeed={HomeVel}",
-    "#{L1}j:{CaptureJogDir}2000^{trigOffset}",
-    # companion axis is fooled to think it is jogging
-    "Motor[L7].JogSpeed=0.00001",
-    "#{L7}j:10^0",
+jog_slideoff_mlim = [
+    "#{L1}j:{SlideOff_Dir}2000^{Trig_Offset} #{L7}j:10^0",
 ]
 
-check_off_limit_inpos_tl = [
+is_on_mlim_inpos = ["Motor[L1].MinusLimit>0", "Motor[L1].InPos>0"]
+is_on_plim_inpos = ["Motor[L1].PlusLimit>0", "Motor[L1].InPos>0"]
+
+is_off_limit_inpos = [
     "Motor[L1].MinusLimit==0",
     "Motor[L1].PlusLimit==0",
     "Motor[L1].InPos>0",
 ]
-log_capt_rbk_tl = [
-    # main axis
-    "Motor[L1].HomePos",
-    "Motor[L1].CapturedPos",
-    "#{L1}p",
-    # companion axis used for readback
-    "Motor[L7].HomePos",
+log_main_n_companion = [
+    # readback capture via companion axis
     "Motor[L7].CapturedPos",
+    # readback and step position at stop position
     "#{L7}p",
+    "#{L1}p",
     # test condition parameter
     "Motor[L1].JogSpeed",
     "full_current(L1)",
+    "Motor[L1].IdCmd",
+    # position references
+    "Motor[L1].HomePos",
+    "Motor[L1].HomeOffset",
+    "Motor[L7].HomePos",
+    # Check these for errors
     "Motor[L7].CapturePos",
     "Motor[L1].TriggerNotFound",
     "Motor[L7].TriggerNotFound",
+    "PowerBrick[L2].Chan[L3].CountError",
 ]
 
-reset_rbk_capt_tl = [
+reset_rdb_capt_config = [
     "Motor[L1].JogSpeed={JogSpeed}",
-    "#{L7}j/",
+    "Motor[L1].CaptureMode=1",  # reset capture mode to default baseConfig
+    "#{L1}hmz",
+    "PowerBrick[L2].Chan[L3].CountError=0",
 ]

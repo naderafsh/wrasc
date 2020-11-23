@@ -1,5 +1,9 @@
+from pandas.core.indexes.base import Index
 from wrasc import reactive_agent as ra
 from ppmac import GpasciiClient
+from ppmac import PpmacToolMt
+
+
 from timeit import default_timer as timer
 from time import sleep
 import re
@@ -7,6 +11,8 @@ from io import StringIO
 import csv
 import os
 import time
+import utils
+from fractions import Fraction
 
 """ ppmac basic agent. 
 This agent checks (watches) a list of statement conditions, 
@@ -14,13 +20,94 @@ and triggeres (acts) a triple list of actions. accordingly.
 
 These have no retry or timeout mechanism internally. Some specialised agents can take care of progress and deadlocks
 
+Sequence:
 
+poll, 
+    do cry_cmds for recry times
+
+if pass, 
+    do celeb_cmds
+then skip one cycle 
+then skip more cycles until wait_after_celeb, if defined
+then log if defined
+and set id_done.
 
 """
 
 macrostrs = ["{", "}"]
 
-ppmac_func_dict = {"EXP2": "2**"}
+ppmac_func_dict = {"EXP2": "2**", "int": "int", "Fraction": "Fraction"}
+
+regex_anynum = r"[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?"
+regex_exp_notification = r"[+-]?\d+(?:\.\d*(?:[eE][+-]?\d+)?)"
+
+
+def default_asic_chan(axis):
+    return (axis - 1) // 4, (axis - 1) % 4
+
+
+def stats_to_conds(cmd_stats):
+    if isinstance(cmd_stats, str):
+        cmd_stats = [cmd_stats]
+    return [cond.replace("=", "==") if ("=" in cond) else cond for cond in cmd_stats]
+
+
+def load_pp_globals(pp_global_filename):
+    """loads ppmac global list form file and arranges a dictionary
+
+    Args:
+        pp_global_filename (str): [description]
+
+    Returns:
+        dict: ppmac globals in a dict
+    """
+    pp_glob_dict = dict()
+    with open(pp_global_filename) as f:
+        pp_global = f.read().splitlines()
+        f.close
+
+    for glob in pp_global:
+        pp_glob = glob.split("\t")
+        if pp_glob[1] == "Global":
+            pp_glob_dict[pp_glob[2].split("(")[0]] = {
+                "base": pp_glob[3],
+                "count": int(pp_glob[4]),
+            }
+    return pp_glob_dict
+
+
+def expand_globals(stats_in, pp_glob_dict, **vars):
+    """ 
+    converts statements with ppmac IDE handled globals back into ppmac native P-Vars
+    also adds a compare equivalent for the statements list
+    Args:
+        pp_glob_dict (dict of dicts): [description]
+        stats_in (list of strings): [description]
+
+    Returns:
+        list of strings: [description]
+    """
+
+    stats_out = []
+    for stat in stats_in:
+        stat_ = stat
+        for glob, glob_fields in pp_glob_dict.items():
+            if glob not in stat:
+                continue
+
+            # substitute global var
+            if glob_fields["count"] > 1:
+                # look for paranthesis and take care of index
+                globals_in_stat = re.findall(f"({glob})(\()(\w*)(\))", stat)
+                for to_find in globals_in_stat:
+                    to_replace = f"P({glob_fields['base']}+{to_find[2]})"
+                    stat_ = stat_.replace("".join(to_find[:]), to_replace)
+            else:
+                stat_ = stat_.replace(glob, f"P{glob_fields['base']}")
+
+        stats_out.append(stat_)
+
+    return stats_out
 
 
 def isPmacNumber(s: str):
@@ -58,21 +145,42 @@ def isPmacFunction(s: str):
 
 def parse_vars(stat: str):
 
-    # parse right or left soides of equation
-    # to parametrised temlate and list of vars
+    """parses a pmac statement 
+    returns a template and a variable list.
+    The variable are replaced by _var_{vars_index} in the template.
 
-    # pass_conds = [
-    #     f"isclose( {cond.split('=')[0]}, {cond.split('=')[1]}, abs_tol=1e05)"
-    #     for cond in cry_cmds
-    # ]
-
-    # sub macros here?
+    example:
+    input-> "EncTable[3].pEnc = Motor[3].PhasePos.a"
+    output-> ("_var_0=='Motor[3].PhasePos.a'" , ['EncTable[3].pEnc'])
+    
+    Returns:
+        (template, var list): a template and a variable list 
+    """
 
     all_vars = []
-    # any_side: no change if it is a ppmacnumber, or an address
 
+    # first see if there are P-Var or I-Var references
+    p_vars = re.findall(r"[pP]\([\w+]*\)", stat)
+    for v in p_vars:
+        all_vars.append(v)
+        vars_index = len(all_vars) - 1
+        stat = stat.replace(v, f"_var_{vars_index}")
+
+    # find exponential notations and convert them.
+    # ppmac doesn't understand 5e-3
+    exp_nums = re.findall(regex_anynum, stat)
+    for v in exp_nums:
+        if "e" in v.lower():
+            stat = stat.replace(v, f"{float(v):.8f}")
+
+    # split the statement
     for v in re.split(r"[\+\-\*\/=><! \(\)]", stat):
-        if v and not isPmacNumber(v):
+
+        if v.startswith("_"):
+            # this is a variable, ignore
+            pass
+
+        elif v and not isPmacNumber(v):
 
             if isPmacPointer(v):  # this is a pointer, treat this as quoted text
                 stat = stat.replace(v, f"'{v}'")
@@ -109,9 +217,11 @@ def parse_cmds(cmds):
     # convert list to one string of lines
     cmds_out = []
     for cmd in cmds:
-        # separate right and left side
+        assert isinstance(cmd, str)
+
+        # purge spaces and separate right and left side
         # need to add all possible online comands here too: "^:*" ?
-        cmd_split = cmd.split("=")
+        cmd_split = cmd.replace(" ", "").split("=")
         cmd_left = cmd_split[0]
         if len(cmd_split) > 1:
             # in case of jog==45 , right side would be
@@ -124,23 +234,30 @@ def parse_cmds(cmds):
         else:
             cmds_out.append(cmd)
 
-    return "\n".join(cmds_out)
+    # purge spaces in command strings
+
+    return "\n".join(cmds_out).replace(" ", "")
 
 
-def pars_conds(conds_list):
+def parse_stats(stat_list):
 
-    # makes a list of variables on the watchlist which need to be fetched and relpaced with real-time values, real time.
+    """parses pmac statements into template and variables, 
+    so the variables can be fetched from ppmac to evaluate the statement based on real-time ppmac values.
 
-    if conds_list is None:
+    Returns:
+        [type]: [description]
+    """
+
+    if stat_list is None:
         return []
 
     # make sure "pass_conds_parsed" is a list
-    if isinstance(conds_list, str):
-        conds_list = [conds_list]
+    if isinstance(stat_list, str):
+        stat_list = [stat_list]
 
     parsed_conds = list()
     # there are conditions to check.
-    for cond in conds_list:
+    for cond in stat_list:
         assert isinstance(cond, str)
         # romve spaces to make the output predictable
         cond = cond.replace(" ", "")
@@ -155,11 +272,19 @@ def pars_conds(conds_list):
 
 def expand_pmac_stats(stats, **vars):
 
-    # this function expands the ppmac statements for the channel parmeters
-    # parameters shall be in the form of L1 ... L10 or {whatever}
-    # all of the variables shall be supplies via **vars
-    #
-    # this allows to scale the templates for different channel configuration
+    """    this function expands the ppmac statements for the channel parmeters
+    parameters shall be in the form of L1 ... L10 or {whatever}
+    all of the variables shall be supplies via **vars
+    
+    this allows to scale the templates for different channel configuration
+
+
+    Raises:
+        RuntimeError: [description]
+
+    Returns:
+        [type]: [description]
+    """
 
     # first, some type checking
 
@@ -173,7 +298,8 @@ def expand_pmac_stats(stats, **vars):
 
     stats_out = []
     # expand the stats one by one
-    for stat in stats:
+    for stat_org in stats:
+        stat = stat_org
         assert isinstance(stat, str)
 
         # ignore line comments
@@ -181,17 +307,28 @@ def expand_pmac_stats(stats, **vars):
             continue
 
         # support base L# format by reverting L# to {L#}
-        stat = re.sub(r"(\[)(?=L\d)", "[{", stat)
-        stat = re.sub(r"(?<=L\d)(\])", "}]", stat)
+
+        # find L# except the ones already in {}
+        l_vars = re.findall(r"(?<=[^\w{])(L\d)(?:[^\w{])", stat)
+
+        for lvar in set(l_vars):
+            # put L# in curley brackets
+            stat = (
+                stat.replace(lvar, "{" + lvar + "}")
+                .replace("{{", "{")
+                .replace("}}", "}")
+            )
 
         try:
             stats_out.append(stat.format(**vars))
         except KeyError:
             # if there is a macro which can't be found in vars, then leave it!
             stats_out.append(stat)
+            print(f"unresolved parameters; left for late binding:\n{stat_org}")
         except ValueError:
             # this is probably more serious...
             stats_out.append(stat)
+            raise ValueError(f"ValueError in parameters; ignored!:\n{stat_org}")
         except IndexError:
             # this is probably a syntax issue,
             # e.g. something other than a variable is passed as a macro
@@ -199,6 +336,7 @@ def expand_pmac_stats(stats, **vars):
             # raise RuntimeError(f"syntax error in ppmac statement: {stat} ")
 
             stats_out.append(stat)
+            raise IndexError(f"IndexError in parameters; ignored!:\n{stat_org}")
 
     return stats_out
 
@@ -208,150 +346,70 @@ def ppwr_poll_in(ag_self: ra.Agent):
     assert isinstance(ag_self, WrascPmacGate)
     ag_self: WrascPmacGate
 
+    # if the agent is just came out of inhibit, then reset all retries!
+    if not ag_self.act_on:
+        if ag_self.cry_tries != 0:
+            ag_self.cry_tries = 0
+
     # TODO: it is tricky here as a continuous poll is not always desired?
     if not ag_self.pass_conds_parsed or len(ag_self.pass_conds_parsed) < 1:
-        ag_self.poll.Var = True
-        return ra.StateLogics.Valid, "no checks"
+        return ra.StateLogics.Invalid, "no checks"
 
     # acquire left sides
+    # TODO optimise this routine by:
+    # sending all stats at once
+    # and then processing the conditions one by one ... ?
 
-    for condition in ag_self.pass_conds_parsed:
-        # take templates and variables from inside the
-        # condisions and verify the statement
+    ag_self.receive_cond_parsed(ag_self.pass_conds_parsed)
 
-        verify_text, statement = ag_self.check_cond(condition)
-
-        if verify_text is None:
-            return ra.StateLogics.Invalid, "comms error"
-
-        one_sided_verify_text = verify_text.replace("==", " - (") + ")"
-
-        # TODO improve this, the whole scheme shall bwork on a numpy is_close instead of isequal:
-        # depending on the lvar, round off or not!
-        left_side = condition[1][0]
-        qual = left_side.lower().split(".")[-1]
-        if qual.endswith("speed"):
-            _precision = 1e-6
-        elif qual.endswith("gain"):
-            _precision = 1.0e-7
-        elif qual.endswith("pwmsf"):
-            _precision = 1  # probably wrong
-        elif qual.endswith("maxint"):
-            _precision = 0.0625
-        else:
-            _precision = 1e-16
-
-        try:
-            if abs(eval(one_sided_verify_text)) > _precision:
-                # if eval(verify_text) == False:
-                # no need to check the rest of the conditions
-                return (
-                    False,
-                    f"No pass - {statement}: {one_sided_verify_text} > {_precision}",
-                )
-        except:
-            # arithmentic error, check literal statement
-            if eval(verify_text) == False:
-                # no need to check the rest of the conditions
-                return False, f"No Pass - {statement}: {verify_text} "
-
-    # now that it is going to be True, calculate the logs.
-    # they will be saved to file via actions:
-
-    vals = [ag_self.poll.Time]
-    for condition in ag_self.pass_logs_parsed:
-        # acquire log statements
-        verify_text, statement = ag_self.check_cond(condition)
-
-        if verify_text:
-            # store eval(verify_text) in the logs dict:
-            if isPmacNumber(verify_text):
-                vals.append(eval(verify_text))
-            else:
-                # text value
-                vals.append(verify_text)
-    if len(vals) > 1:
-        ag_self.csvcontent += ",".join(map(str, vals)) + "\n"
-
-    return True, "True"
+    return ag_self.check_pass_conds()
 
 
 def ppwr_act_on_valid(ag_self: ra.Agent):
     """
-    The best act here is to Arm when an action is known.
-    Because there are two different actions are known here, it is best to reset the
-    act status to idle whenever the poll status is changed.
-
-    This will ARM if an act_on_armed method is defined. This is for users to hook their custom methods
+    user action can be injected here 
     """
 
     assert isinstance(ag_self, WrascPmacGate)
     ag_self: WrascPmacGate
 
+    if ag_self.poll.is_on_hold():
+        return ra.StateLogics.Done, f"Done."
+
     # Arm for action if poll is changed to False or True
     if ag_self.poll.Var == True:
-
-        # if already put on hold
-        if ag_self.poll.is_on_hold():
-            return ra.StateLogics.Done, f"Done."
-
-        # do celeb commands if they exist
-        if ag_self.celeb_cmds_parsed:
-            resp = ag_self.ppmac.send_receive_raw(
-                ag_self.eval_cmd(ag_self.celeb_cmds_parsed)
-            )
-        else:
-            resp = ""
-
-        # if this is a staged-pass then
-        # stop checking the condition. Stage is now passed.
-        # this will also trigger transition to Done state the next cycle.
-        if not ag_self.ongoing:
-            ag_self.poll.hold(for_cycles=-1, reset_var=False)
-            # TODO Remove this test code
-            ag_self.act.hold(for_cycles=1, reset_var=False)
-
-        # now log a line to cvs if there is one
-        if ag_self.csvcontent and ag_self.csv_file_name:
-
-            with open(ag_self.csv_file_name, "w+") as file:
-                file.write(ag_self.csvcontent)
-            ag_self.cvscontent = None
-
-        # arm if an arm action is defined (by user). Otherwise Done
-        if ag_self.act_on_armed:
-            return (
-                ra.StateLogics.Armed,
-                f"passing to external aoa: {resp}",
-            )
-
-        return ra.StateLogics.Done, f"celeb: {resp}"
+        return ag_self.celeb_act()
 
     elif ag_self.poll.Var == False:
 
-        # condition is not met, so the we need to keep checking, and probably sending a fixer action
-        # check how many times this is repeated
-        # this is a way of managing reties:
-        # once the agent gets armed, it will not be released until externally poked back?
+        return ag_self.cry_act()
+    else:
+        return ra.StateLogics.Idle, "Invalid State"
 
-        if ag_self.cry_cmds_parsed:
 
-            if ag_self.cry_tries >= ag_self.cry_retries:
-                return (
-                    ra.StateLogics.Idle,
-                    f"retries exhausted {ag_self.cry_tries}/{ag_self.cry_retries}",
-                )
+def ppwr_act_on_armed(ag_self: ra.Agent):
 
-            ag_self.cry_tries = ag_self.cry_tries + 1
-            resp = ag_self.ppmac.send_receive_raw(
-                ag_self.eval_cmd(ag_self.cry_cmds_parsed)
-            )
+    if ag_self.wait_after_celeb:
+        elapsed = ra.timer() - ag_self.poll.ChangeTime
+        if elapsed < ag_self.wait_after_celeb:
             return (
-                ra.StateLogics.Idle,
-                f"Fix action {ag_self.cry_tries}/{ag_self.cry_retries}",
+                ra.StateLogics.Armed,
+                f"waiting {elapsed:.2f}/{ag_self.wait_after_celeb}sec",
+            )
+        else:
+            # need to flick a deliberate change here, to reset the timer!
+            ag_self.poll.ChangeTime = ra.timer()
+
+    if ag_self.pass_logs_parsed:
+        ag_self.acquire_log()
+        try:
+            ag_self.log_to_file()
+        except:
+            raise RuntimeError(
+                f"{ag_self.name}: writing log {ag_self.csvcontent} to file "
             )
 
-        return ra.StateLogics.Idle, "No action"
+    return ra.StateLogics.Done, "Done, act on hold."
 
 
 def ppwr_act_on_invalid(ag_self: ra.Agent):
@@ -382,18 +440,159 @@ def normalise_header(_header):
 
 class Conditions(object):
     def __init__(self, value=None):
-        self.value = pars_conds(value)
+        self.value = parse_stats(value)
 
     def __get__(self, instance, owner):
         return self.value
 
     def __set__(self, instance, value):
-        self.value = pars_conds(value)
+        self.value = parse_stats(value)
+
+
+class PPMAC:
+    """Adapter for different gpascii drivers
+    only two base functions are provided:
+    connect 
+    send_receive_raw
+
+    Args:
+        backward (bool): sets the driver to use the ultra slow but backward compatible PpmacToolMt
+        host (str): url
+    """
+
+    def __init__(self, host, debug=False, backward=False) -> None:
+
+        self.host = host
+
+        if not backward:
+            self.gpascii = GpasciiClient(host=self.host, debug=debug)
+        else:
+            self.gpascii = PpmacToolMt(host=self.host)
+
+        self.connected = False
+
+    def connect(self):
+        self.gpascii.connect()
+        self.connected = self.gpascii.connected
+
+    def send_receive_raw(self, command, timeout=5):
+        """send and then receive a series of commands in sequence
+
+        Args:
+            command (str): \n separated string of commands
+            timeout (int, optional): [description]. Defaults to 5.
+
+        Returns:
+            [type]: [description]
+        """
+
+        command = re.sub("([\n][\n]+)", "\n", command.rstrip("\n").lstrip("\n"))
+        n_to_receive = command.count("\n") + 1 if command else 0
+
+        # skip if command is empty
+        if not n_to_receive:
+            # construct an empty respond here and leave
+            return ["", ""], True, ""
+
+        if isinstance(self.gpascii, GpasciiClient):
+            tpl = self.gpascii.send_receive_raw(cmds=command, timeout=timeout)
+            return tpl
+
+        if isinstance(self.gpascii, PpmacToolMt):
+            # check if there are only one command
+
+            success, returned_lines = self.gpascii.send_receive(
+                command, timeout=timeout
+            )
+
+            if len(returned_lines) < 2:
+                # command had no response, e.g. #4$
+                returned_lines.append("")
+
+            if success:
+                error_msg = None
+
+                if n_to_receive == len(returned_lines):
+                    # in case of multiple commands,
+                    # commands are not included in the reponse
+                    cmd_response = [command, "\n".join(returned_lines)]
+
+                else:
+                    cmd_response = returned_lines
+                wasSuccessful = True
+            else:
+                error_msg = returned_lines[1]
+                cmd_response = [returned_lines[0], error_msg]
+                wasSuccessful = False
+
+            # wasSuccessful = True if success > 0 else False
+
+            return cmd_response, wasSuccessful, error_msg
+
+    def send_list_receive_dict(self, cmd_list, timeout=5):
+
+        if not isinstance(self.gpascii, GpasciiClient):
+            return None, None, None
+
+        cmd_str = "\n".join(str(e) for e in cmd_list)
+        cmd_resp, wasSuccessful, error_msg = self.send_receive_raw(cmd_str)
+
+        if not wasSuccessful:
+            # there are some errors but we can't through away the whole response!
+            return None, False, error_msg
+
+        ret_list = cmd_resp[1].split("\n")
+
+        # extract the values
+        ret_key_val = [
+            stat.lower().strip("\n").strip(" ").strip("'").split("=")
+            for stat in ret_list
+        ]
+
+        ppmac_key_val = dict()
+
+        for i, keyval in enumerate(ret_key_val):
+
+            # first, verify if the returned cmd (key) matches sent cmd
+
+            if len(keyval) == 2:
+                if keyval[0] == cmd_list[i]:
+                    ppmac_key_val[cmd_list[i]] = {
+                        "val": keyval[1],
+                        "time": time.time(),
+                    }
+                else:
+                    # returned key is different, e.g. p(8190+2) returns p8192
+                    # check if this is the case, and
+                    invalid_vars = re.sub(r"[iqpdl]\d+", "", keyval[0])
+                    if invalid_vars:
+                        return None, False, f"mistmatch in ppmac response: {error_msg}"
+                    valid_var_num = re.findall(r"(?:[iqpdl])(\d+)", keyval[0])[0]
+                    evalstr = f"{cmd_list[i][1:]} - {valid_var_num}"
+                    if not eval(evalstr) == 0:
+                        return None, False, f"wrong variable index!! : {evalstr}"
+                    # it's ok to pass use the original command for this one
+                    ppmac_key_val[cmd_list[i]] = {
+                        "val": keyval[-1],
+                        "time": time.time(),
+                    }
+
+            # if the key is not yet found
+            elif len(cmd_list) > i:
+                ppmac_key_val[cmd_list[i]] = {
+                    "val": keyval[-1],
+                    "time": time.time(),
+                }
+
+        return ppmac_key_val, wasSuccessful, error_msg
+
+    def close(self):
+        self.gpascii.close()
 
 
 class WrascPmacGate(ra.Agent):
 
-    ppmac = ...  # type : GpasciiClient
+    ppmac = ...  # type : PPMAC
 
     fetch_cmds = ...  # type : list
     fetch_cmd_parsed = ...  # type : str
@@ -403,7 +602,7 @@ class WrascPmacGate(ra.Agent):
     celeb_cmd_parsed = ...  # type : str
 
     pass_cond = ...  # type : list
-    pass_cond_parsed = ...  # type : list
+    pass_conds_parsed = ...  # type : list
 
     pass_logs = ...  # type : list
     pass_logs_parsed = ...  # type : list
@@ -412,18 +611,23 @@ class WrascPmacGate(ra.Agent):
 
     def __init__(
         self,
-        ppmac: GpasciiClient = None,
+        ppmac: PPMAC = None,
         fetch_cmds=[],
         pass_conds=[],
         cry_cmds=[],
         cry_retries=1,
         celeb_cmds=[],
         pass_logs=[],
-        csv_file_name=None,
+        csv_file_path=None,
+        ongoing=False,
+        wait_after_celeb=None,
         **kwargs,
     ):
+
+        self.kwargs = {}
         self.pp_globals = {}
 
+        self.wait_after_celeb = None
         self.ongoing = False
 
         self.fetch_cmds = []
@@ -434,11 +638,34 @@ class WrascPmacGate(ra.Agent):
         self.celeb_cmds = []
         self.pass_logs = []
 
-        if not ppmac or (not isinstance(ppmac, GpasciiClient)):
+        self.pass_logs_parsed = []
+        self.csv_file_name = None
+        # if you are here, then we have an agent to intialise
+
+        super().__init__(
+            poll_in=ppwr_poll_in,
+            act_on_invalid=ppwr_act_on_invalid,
+            act_on_valid=ppwr_act_on_valid,
+            act_on_armed=ppwr_act_on_armed,
+            fetch_cmds=fetch_cmds,
+            pass_conds=pass_conds,
+            cry_cmds=cry_cmds,
+            cry_retries=cry_retries,
+            celeb_cmds=celeb_cmds,
+            pass_logs=pass_logs,
+            csv_file_path=csv_file_path,
+            ongoing=ongoing,
+            wait_after_celeb=wait_after_celeb,
+            **kwargs,
+        )
+
+        if not ppmac or (not isinstance(ppmac, PPMAC)):
             self.dmAgentType = "uninitialised"
             return
 
-        self.ppmac = ppmac  # type : GpasciiClient
+        self.dmAgentType = "ppmac_wrasc"
+
+        self.ppmac = ppmac  # type : PPMAC
 
         if not self.ppmac.connected:
             self.ppmac.connect()
@@ -448,29 +675,8 @@ class WrascPmacGate(ra.Agent):
             while not self.ppmac.connected:
 
                 if timer() < time_0 + time_out:
-                    raise TimeoutError(
-                        f"GpasciiClient connection timeout: {self.ppmac.host}"
-                    )
+                    raise TimeoutError(f"PPMAC connection timeout: {self.ppmac.host}")
                 sleep(0.1)
-
-        self.pass_logs_parsed = []
-        self.csv_file_name = None
-        # if you are here, then we have an agent to intialise
-
-        super().__init__(
-            poll_in=ppwr_poll_in,
-            act_on_invalid=ppwr_act_on_invalid,
-            act_on_valid=ppwr_act_on_valid,
-            fetch_cmds=fetch_cmds,
-            pass_conds=pass_conds,
-            cry_cmds=cry_cmds,
-            cry_retries=cry_retries,
-            celeb_cmds=celeb_cmds,
-            pass_logs=pass_logs,
-            csv_file_name=csv_file_name,
-            **kwargs,
-        )
-        self.dmAgentType = "ppmac_wrasc"
 
     def setup(
         self,
@@ -480,10 +686,26 @@ class WrascPmacGate(ra.Agent):
         cry_retries=None,
         celeb_cmds=None,
         pass_logs=None,
-        csv_file_name=None,
+        csv_file_path=None,
         ongoing=None,
+        wait_after_celeb=None,
         **kwargs,
     ):
+
+        """
+        sets up class parameters:
+        fetch_mds: commands to run when pass values are invalid. These might be establidhsing connection
+        pass_conds: pass conditions as list of texts. A pass_cond=True always passes. 
+        In case of [] or None or not passing, cry_cmds will be used to create verification condition:
+         "=" in statements will be replaced by "==". non-statement commands will be ignored.
+        """
+
+        if kwargs:
+            # merge with existing
+            self.kwargs = {**self.kwargs, **kwargs}
+
+        if wait_after_celeb:
+            self.wait_after_celeb = wait_after_celeb
 
         if ongoing:
             self.ongoing = ongoing
@@ -491,114 +713,149 @@ class WrascPmacGate(ra.Agent):
         # every one of cmds and conds pass this point,
         # so its best to esxpand them here
 
-        self.pass_conds = expand_pmac_stats(
-            pass_conds if pass_conds else self.pass_conds, **kwargs
-        )
-        self.pass_conds_parsed = pars_conds(self.pass_conds)
-
-        # pass_logs_parsed need to be fetched with pass_conds_parsed, stored, and logged at celeb.
-        self.pass_logs = expand_pmac_stats(
-            pass_logs if pass_logs else self.pass_logs, **kwargs
-        )
-        self.pass_logs_parsed = pars_conds(self.pass_logs)
-
-        if csv_file_name:
-            self.csv_file_name = csv_file_name
-
-        # setup the headers, they get written when (and only if) the first set of readings are ready
-        if self.pass_logs_parsed:
-            headers = ["Time"] + list(list(zip(*self.pass_logs_parsed))[2])
-            # remove and reshape special caharacters headers
-
-            headers = [normalise_header(header) for header in headers]
-
-            self.csvcontent = ",".join(map(str, headers)) + "\n"
-
-            if self.csvcontent and self.csv_file_name:
-
-                # if file exists, make a backup of the existing file
-                # do not leave until the file doesn't exist!
-                n_copies = 0
-                while os.path.exists(self.csv_file_name):
-                    name, ext = os.path.splitext(self.csv_file_name)
-                    modif_time_str = time.strftime(
-                        "%y%m%d_%H%M",
-                        time.localtime(os.path.getmtime(self.csv_file_name)),
-                    )
-                    n_copies_str = f"({n_copies})" if n_copies > 0 else ""
-                    try:
-                        os.rename(
-                            self.csv_file_name,
-                            f"{name}_{modif_time_str}{n_copies_str}{ext}",
-                        )
-                    except FileExistsError:
-                        # forget it... the file is already archived...
-                        # TODO or you need to be too fussy and break the execution for this?
-                        n_copies += 1
-
-                open(self.csv_file_name, "w+")
-        else:
-            # self.log_vals = []
-            self.csvcontent = None
-
         self.fetch_cmds = expand_pmac_stats(
-            fetch_cmds if fetch_cmds else self.fetch_cmds, **kwargs
+            fetch_cmds if fetch_cmds else self.fetch_cmds, **self.kwargs
         )
         self.fetch_cmds_parsed = parse_cmds(self.fetch_cmds)
 
         self.cry_cmds = expand_pmac_stats(
-            cry_cmds if cry_cmds else self.cry_cmds, **kwargs
+            cry_cmds if cry_cmds else self.cry_cmds, **self.kwargs
         )
         self.cry_cmds_parsed = parse_cmds(self.cry_cmds)
 
         self.celeb_cmds = expand_pmac_stats(
-            celeb_cmds if celeb_cmds else self.celeb_cmds, **kwargs
+            celeb_cmds if celeb_cmds else self.celeb_cmds, **self.kwargs
         )
         self.celeb_cmds_parsed = parse_cmds(self.celeb_cmds)
 
         if cry_retries:
             self.cry_retries = cry_retries
 
+        if (not pass_conds) and (cry_cmds):
+            # an empty pass-cond (but not a None) mneans: chacke for all of the command statements:
+            pass_conds = stats_to_conds(cry_cmds)
+
+        self.pass_conds = expand_pmac_stats(
+            pass_conds if pass_conds else self.pass_conds, **self.kwargs
+        )
+        self.pass_conds_parsed = parse_stats(self.pass_conds)
+
+        # pass_logs_parsed need to be fetched with pass_conds_parsed, stored, and logged at celeb.
+        self.pass_logs = expand_pmac_stats(
+            pass_logs if pass_logs else self.pass_logs, **self.kwargs
+        )
+        self.pass_logs_parsed = parse_stats(self.pass_logs)
+
+        if csv_file_path:
+            self.csv_file_name = csv_file_path
+
+            # setup the headers, they get written when (and only if) the first set of readings are ready
+            if self.pass_logs_parsed:
+                headers = ["Time"] + list(list(zip(*self.pass_logs_parsed))[2])
+                # remove and reshape special caharacters headers
+
+                headers = [normalise_header(header) for header in headers]
+
+                self.csvcontent = ",".join(map(str, headers)) + "\n"
+
+                if self.csvcontent and self.csv_file_name:
+
+                    # time_stamp the filename
+                    self.csv_file_stamped = utils.time_stamp(self.csv_file_name)
+
+                    # if file exists, make a backup of the existing file
+                    # do not leave until the file doesn't exist!
+                    n_copies = 0
+                    while os.path.exists(self.csv_file_stamped):
+                        name, ext = os.path.splitext(self.csv_file_stamped)
+                        modif_time_str = time.strftime(
+                            "%y%m%d_%H%M",
+                            time.localtime(os.path.getmtime(self.csv_file_stamped)),
+                        )
+                        n_copies_str = f"({n_copies})" if n_copies > 0 else ""
+                        try:
+                            os.rename(
+                                self.csv_file_stamped,
+                                f"{name}_{modif_time_str}{n_copies_str}{ext}",
+                            )
+                        except FileExistsError:
+                            # forget it... the file is already archived...
+                            # TODO or you need to be too fussy and break the execution for this?
+                            n_copies += 1
+
+                    open(self.csv_file_stamped, "w+")
+            else:
+                # self.log_vals = []
+                self.csvcontent = None
+
         # TODO change this crap[ solution
         # floating digits used for == comparison
         self.ndigits = 6
 
-        super().setup(**kwargs)
+        super().setup(**self.kwargs)
 
     def eval_cmd(self, cmds_str):
 
-        # evaluate {} macros with actual values from ppmac
-        # this is done at the very late stage i.e. as late as possible.
-        # As opposed to this one,
+        """ evaluates {} macros with actual values from ppmac
+        this is done at the very late stage i.e. as late as possible.
+       
+        Raises:
+            RuntimeError: [description]
 
+        Returns:
+            [type]: [description]
+        """
+
+        # purge spaces
+        cmds_str = cmds_str.replace(" ", "")
+
+        # find all of the macros which are previously marked by {} at parse time
         macro_list = re.findall(f"(?:{macrostrs[0]})(.*?)(?:{macrostrs[1]})", cmds_str)
+        # evaluate the macro's first.
+        # These are the "right side" statements in a command,
+        # which ppmac can not resolve in an online command as opposed to a plc or a program.
+        for stat in parse_stats(macro_list):
 
-        for condition in pars_conds(macro_list):
-
-            l_template, statement = self.check_cond(condition)
+            l_template, statement = self.check_cond(stat)
 
             if l_template is None:
                 raise RuntimeError(f"comms with ppmac at {self.ppmac.host}")
 
             rt_val = eval(l_template)
-            replace = macrostrs[0] + statement + macrostrs[1]
-            cmds_str = cmds_str.replace(f"{replace}", f"{rt_val}")
+            evaluated_stat = macrostrs[0] + statement + macrostrs[1]
+            cmds_str = cmds_str.replace(evaluated_stat, f"{rt_val}")
 
         return cmds_str
 
     def check_cond(self, condition):
+        """
+        Evaluates the condition/statement, by fethcing all macro variables from ppmac
 
-        l_template, l_vars, statement = condition
+        Args:
+            condition ([type]): [description]
+
+        Returns:
+            (str,str): evaluated_stat.lower(), statement
+        """
+
+        if self.ppmac_key_val:
+            # offline info already exists... check further?
+            return self.check_cond_offline(condition)
+
+        evaluated_stat, l_vars, statement = condition
 
         for i, l_var in enumerate(l_vars):
             # acquire the variable to check
             tpl = self.ppmac.send_receive_raw(l_var)
 
             if not tpl[1]:
-                self.poll.Var = None
-                l_template = "Err"
-                break
-                # return ra.StateLogics.Invalid, "comms error"
+                # self.poll.Var = None
+                # effectively make it invalid!!
+                raise RuntimeError(
+                    f"ppmac returned error on statement {statement} command {l_var}"
+                )
+                # evaluated_stat = "NaN"
+                # break
 
             ret_val = tpl[0][1].strip("\n").strip(" ").strip("'").split("=")[-1]
 
@@ -610,26 +867,248 @@ class WrascPmacGate(ra.Agent):
                 # check if it is a valid hex
                 ret_val = str(int(ret_val[1:], 16))
 
-            l_template = l_template.replace(f"_var_{i}", ret_val)
+            evaluated_stat = evaluated_stat.replace(f"_var_{i}", ret_val)
         # ppmac is a non case sensitive system, so return comparison statement in lower case
-        return l_template.lower(), statement
+
+        return (
+            evaluated_stat.lower() if "'" in evaluated_stat else evaluated_stat,
+            statement,
+        )
+
+    def receive_cond_parsed(self, stats_parsed):
+        """
+        receive all stats in pass_conds_parsed
+        """
+
+        # extract all stats
+        var_list_of_lists = [elem[1] for elem in stats_parsed]
+        cmd_list = [item.lower() for sublist in var_list_of_lists for item in sublist]
+
+        self.ppmac_key_val, success, err_msg = self.ppmac.send_list_receive_dict(
+            cmd_list
+        )
+
+        if not success:
+            # indicate failed acquisition by setting the dict to None
+            self.ppmac_key_val = None
+            # raise RuntimeError(f"{err_msg} in {cmd_list}")
+
+    def check_cond_offline(self, condition):
+        """
+        Evaluates the condition/statement, by fethcing all macro variables from ppmac
+
+        Args:
+            condition ([type]): [description]
+
+        Returns:
+            (str,str): evaluated_stat.lower(), statement
+        """
+
+        evaluated_stat, l_vars, statement = condition
+
+        for i, l_var in enumerate(l_vars):
+
+            l_var = l_var.lower()  # type: str
+            if l_var not in self.ppmac_key_val:
+                print("gooz")
+
+            ret_val = self.ppmac_key_val[l_var]["val"]
+
+            if "fraction" in condition[0].lower():
+                # choss
+                _ = condition[0].lower()
+
+            if not isPmacNumber(ret_val):
+                # treat this return as string
+                ret_val = f"'{ret_val}'"
+
+            elif ret_val.startswith("$"):
+                # check if it is a valid hex
+                ret_val = str(int(ret_val[1:], 16))
+
+            evaluated_stat = evaluated_stat.replace(f"_var_{i}", ret_val)
+        # ppmac is a non case sensitive system, so return comparison statement in lower case
+        return (
+            evaluated_stat.lower() if "'" in evaluated_stat else evaluated_stat,
+            statement,
+        )
+
+    def check_pass_conds(self):
+
+        for condition in self.pass_conds_parsed:
+            # take templates and variables from inside the
+            # condisions and verify the statement
+
+            verify_text, statement = self.check_cond(condition)
+
+            if verify_text is None:
+                # major comms error, do not try the rest of the conditions?
+                return ra.StateLogics.Invalid, "comms error"
+
+            if verify_text == "err":
+                # this condition had some issues with syntax, continue with the rest
+                verify_text = verify_text
+
+            if (verify_text.count("==") == 1) and ("'" not in verify_text):
+                one_sided_verify_text = verify_text.replace("==", " - (") + ")"
+                # TODO improve this, the whole scheme shall work on a numpy is_close instead of isequal:
+                # depending on the lvar, round off or not!
+                left_side = condition[1][0]  # type: str
+                qual = left_side.lower().split(".")[-1]
+                if qual.endswith("speed"):
+                    precision = 1e-6
+                elif qual.endswith("gain"):
+                    precision = 1.0e-7
+                elif qual.endswith("pwmsf"):
+                    precision = 1  # probably wrong
+                elif qual.endswith("maxint"):
+                    precision = 0.0625
+                elif qual.endswith("scalefactor"):
+                    precision = 1e-16
+                else:
+                    precision = 1e-16
+
+                try:
+                    if abs(eval(one_sided_verify_text)) > precision:
+                        # if eval(verify_text) == False:
+                        # no need to check the rest of the conditions
+
+                        return (
+                            False,
+                            f"{statement}: {one_sided_verify_text} > {precision}",
+                        )
+                    continue
+                except:
+                    pass
+            # arithmentic error, check literal statement
+            if eval(verify_text) == False:
+                # no need to check the rest of the conditions
+                return False, f"{statement}: {verify_text} "
+
+        return True, "True"
 
     @property
     def is_done(self):
+
+        """ True if the agent actions are complete
+        Always True for agents with ongoing variable set
+
+        Returns:
+            [type]: [description]
+        """
 
         if self.ongoing or self.act.Var:
             return True
         else:
             return False
 
+    def reset(self):
+        self.poll.force(None, immediate=False)
+        self.act.force(None, immediate=True)
+
+    def acquire_log(self):
+        """
+        acquire pass_log_parsed conditions and put them in cvscontent
+        """
+
+        # now that it is going to be True, calculate the logs.
+        # they will be saved to file via actions:
+
+        vals = [self.poll.Time]
+        self.receive_cond_parsed(self.pass_logs_parsed)
+        for condition in self.pass_logs_parsed:
+            # acquire log statements
+
+            # if self.name.startswith("ma_on_") and condition[0].startswith("_var_0-05"):
+            #     print("delete_this")
+
+            verify_text, statement = self.check_cond(condition)
+
+            if verify_text:
+                # store eval(verify_text) in the logs dict:
+                if isPmacNumber(verify_text):
+                    vals.append(eval(verify_text))
+                else:
+                    # text value
+                    vals.append(verify_text)
+        if len(vals) > 1:
+            self.csvcontent += ",".join(map(str, vals)) + "\n"
+
+        return True
+
+    def log_to_file(self):
+        # now log a line to cvs if there is one
+
+        # if "5e" in self.csvcontent:
+        #     print(self.csvcontent)
+
+        if self.csvcontent and self.csv_file_stamped:
+
+            with open(self.csv_file_stamped, "w+") as file:
+                file.write(self.csvcontent)
+                file.close
+
+            self.cvscontent = None
+
+    def celeb_act(self):
+
+        # do celeb commands if they exist
+        if self.celeb_cmds_parsed:
+            resp = self.ppmac.send_receive_raw(self.eval_cmd(self.celeb_cmds_parsed))
+        else:
+            resp = ""
+
+        # in any case reset cry_tries = 0
+        self.cry_tries = 0
+
+        # if this is a staged-pass then
+        # stop checking the condition. Stage is now passed.
+        # this will also trigger transition to Done state the next cycle.
+        if not self.ongoing:
+            self.poll.hold(for_cycles=-1, reset_var=False)
+
+        return ra.StateLogics.Armed, f"armed: {resp}"
+
+    def cry_act(self):
+        # condition is not met, so the we need to keep checking, and probably sending a fixer action
+        # check how many times this is repeated
+        # this is a way of managing reties:
+        # once the agent gets armed, it will not be released until externally poked back?
+
+        if self.cry_cmds_parsed:
+
+            if self.cry_tries >= self.cry_retries:
+                return (
+                    ra.StateLogics.Idle,
+                    f"retries exhausted {self.cry_tries}/{self.cry_retries}",
+                )
+
+            self.cry_tries = self.cry_tries + 1
+            resp = self.ppmac.send_receive_raw(self.eval_cmd(self.cry_cmds_parsed))
+            if not resp[1]:
+                # error in command or comms
+                pass
+
+            return (
+                ra.StateLogics.Idle,
+                f"Fix action {self.cry_tries}/{self.cry_retries} {resp[2]}",
+            )
+
+        return ra.StateLogics.Idle, "No action"
+
 
 # -------------------------------------------------------------------
 def done_condition_poi(ag_self: ra.Agent):
 
-    # check "done" condition.
-    # set the sequence by setting the prohibits
-    # this agent remains invalid until the process is all done
-    # and then uses
+    """[summary] poll in method
+        check "done" condition.
+        set the sequence by setting the prohibits
+        this agent remains invalid until the process is all done
+        and then uses
+
+    Returns:
+        [type]: [description]
+    """
 
     assert isinstance(ag_self, WrascRepeatUntil)
     ag_self: WrascRepeatUntil
@@ -637,7 +1116,10 @@ def done_condition_poi(ag_self: ra.Agent):
     all_stages_passed = ag_self.all_done_ag.is_done  # poll.Var
 
     if not all_stages_passed:
-        return None, "last stage not passed..."
+        return (
+            None,
+            f"awating {ag_self.all_done_ag.name}...{ag_self.repeats + 1} to go",
+        )
 
     for agname in ag_self.agent_list:
         ag = ag_self.agent_list[agname]["agent"]  # type : ra.Agent
@@ -647,10 +1129,11 @@ def done_condition_poi(ag_self: ra.Agent):
         if ag.layer >= ag_self.layer:
             continue
 
-        all_stages_passed = all_stages_passed and ag.is_done  # ag.poll.Var
-
-    if not all_stages_passed:
-        return None, "prev stages not passed..."
+        all_stages_passed = all_stages_passed and (
+            ag.is_done or ag.inhibited
+        )  # ag.poll.Var
+        if not all_stages_passed:
+            return None, f"awaiting {ag.name} ...{ag_self.repeats + 1} to go"
 
     # all done. Now decide based on a counrter to either quit or reset and repeat
     if ag_self.repeats > 0:
@@ -660,13 +1143,23 @@ def done_condition_poi(ag_self: ra.Agent):
 
 
 def arm_to_quit_aov(ag_self: ra.Agent):
+    """action on valid: arm to 
+    either reset the self.reset_these_ags list of agents, 
+    or quit wrasc if repeat times exceed self.repeats
+
+    Args:
+        ag_self (ra.Agent): [description]
+
+    Returns:
+        [type]: [description]
+    """
 
     assert isinstance(ag_self, WrascRepeatUntil)
     ag_self: WrascRepeatUntil
 
     if ag_self.poll.Var == True:
         # inform and log, confirm with other agents...
-        return ra.StateLogics.Armed, "out."
+        return ra.StateLogics.Armed, "Done and out."
     elif ag_self.poll.Var == False:
         # action: invalidate all agents in this subs-stage,
         # so the cycle restart
@@ -675,9 +1168,7 @@ def arm_to_quit_aov(ag_self: ra.Agent):
             assert isinstance(ag, ra.Agent)
 
             # only reset ags which are below this control agent
-
-            ag.poll.force(None, immediate=False)
-            ag.act.force(None, immediate=True)
+            ag.reset()
 
         ag_self.repeats -= 1
 
@@ -685,14 +1176,25 @@ def arm_to_quit_aov(ag_self: ra.Agent):
 
 
 def quit_act_aoa(ag_self: ra.Agent):
+    """ act on armed:
+
+    quit if agent value is True, else go Idle again
+
+    (incomplete) if quit_if_done is not set, then do n more repeats
+
+    Args:
+        ag_self (ra.Agent): [description]
+
+    Returns:
+        [type]: [description]
+    """
 
     assert isinstance(ag_self, WrascRepeatUntil)
     ag_self: WrascRepeatUntil
 
     if not ag_self.quit_if_done:
         ag_self.repeats = 30
-        ag_self.poll.force(None, immediate=False)
-        ag_self.act.force(None, immediate=True)
+        ag_self.reset()
         return ra.StateLogics.Done, "RA_WHATEVER"
 
     if ag_self.poll.Var:
@@ -702,6 +1204,12 @@ def quit_act_aoa(ag_self: ra.Agent):
 
 
 class WrascRepeatUntil(ra.Agent):
+    """ A repeat Until special Reactive Agent
+
+    Args:
+        ra ([type]): [description]
+    """
+
     def __init__(
         self,
         poll_in=done_condition_poi,
@@ -717,7 +1225,7 @@ class WrascRepeatUntil(ra.Agent):
             **kwargs,
         )
 
-        self.dmAgentType = "sequencer_wrasc"
+        self.dmAgentType = "RepeatUntil_RA"
 
         self.all_done_ag = None
         self.reset_these_ags = []
@@ -728,10 +1236,6 @@ class WrascRepeatUntil(ra.Agent):
 default_asic = lambda axis: (axis - 1) // 4
 default_chan = lambda axis: (axis - 1) % 4
 default_companion = lambda axis: axis + 8
-
-
-def default_asic_chan(axis):
-    return (axis - 1) // 4, (axis - 1) % 4
 
 
 class axis:
@@ -745,6 +1249,8 @@ class axis:
         self.second_chan = self.prim_chan
 
         self.companion_axis = default_companion(self.motor_n)
+
+        self.reverse_encoder = False
 
         self.setup(**kwargs)
 
@@ -780,6 +1286,40 @@ class PpmacMotorShell(object):
     Args:
         object ([type]): [description]
     """
+
+
+def process_agents(ag_list):
+    """process a list of ppra agent, separately
+
+    Args:
+        ag_self (ppra.WrascPmacGate): [description]
+
+    Returns:
+        [type]: [description]
+    """
+
+    if not isinstance(ag_list, list):
+        ag_list = [ag_list]
+
+    for ag in ag_list:
+        ag.reset()
+
+    while not any([ag.is_done for ag in ag_list]):
+
+        for ag_self in ag_list:
+            ag_self: WrascPmacGate
+            ag_self._in_proc()
+
+            desc = ""
+            if ag_self.verbose > 0:
+                desc = ag_self.annotate()[1]
+                print(f"{ag_self.name}: {desc}")
+
+        sleep(0.25)
+
+        for ag_self in ag_list:
+            ag_self: WrascPmacGate
+            ag_self._out_proc()
 
 
 if __name__ == "__main__":
