@@ -336,7 +336,8 @@ def expand_pmac_stats(stats, **vars):
         except ValueError:
             # this is probably more serious...
             stats_out.append(stat)
-            raise ValueError(f"ValueError in parameters; ignored!:\n{stat_org}")
+            # TODO this is a hack: PLC code actually can contain {} so...!!!
+            print(f"ValueError in parameters; ignored!:\n{stat_org}")
         except IndexError:
             # this is probably a syntax issue,
             # e.g. something other than a variable is passed as a macro
@@ -1297,7 +1298,7 @@ class PpmacMotorShell(object):
 
 
 def do_any(ag_list):
-    """process a list of ppra agent, separately
+    """process a list of ppra agents until any is done
 
     Args:
         ag_self (ppra.WrascPmacGate): [description]
@@ -1313,6 +1314,40 @@ def do_any(ag_list):
         ag.reset()
 
     while not any([ag.is_done for ag in ag_list]):
+
+        for ag_self in ag_list:
+            ag_self: WrascPmacGate
+            ag_self._in_proc()
+
+            desc = ""
+            if ag_self.verbose > 0:
+                desc = ag_self.annotate()[1]
+                print(f"{ag_self.name}: {desc}")
+
+        sleep(0.25)
+
+        for ag_self in ag_list:
+            ag_self: WrascPmacGate
+            ag_self._out_proc()
+
+
+def do_all(ag_list):
+    """process a list of ppra agents until all are done
+
+    Args:
+        ag_self (ppra.WrascPmacGate): [description]
+
+    Returns:
+        [type]: [description]
+    """
+
+    if not isinstance(ag_list, list):
+        ag_list = [ag_list]
+
+    for ag in ag_list:
+        ag.reset()
+
+    while not all([ag.is_done for ag in ag_list]):
 
         for ag_self in ag_list:
             ag_self: WrascPmacGate

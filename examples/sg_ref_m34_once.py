@@ -20,19 +20,27 @@ max_loop = 100
 # m4 pos=-27021.32
 # m6 = -1.701905.4
 
+# ppra.do_any(sg_test.set_initial_setup_ag)
+
 iters = 0
 while iters < tst["loop_repeats"]:
     print(f"starting loop no. {iters}")
     # set aux fault protection for inner and outer axes.
     # This prevents them to find mlim
-    ppra.do_any(sg_test.setaux_inner_ag)
-    ppra.do_any(sg_test.slide_inner_on_aux_ag)
-    ppra.do_any(sg_test.setaux_capture_inner_ag)
+    ppra.do_all([sg_test.setaux_inner_ag, sg_test.setaux_outer_ag])
+    # let inner and outer move together. Limits are being watched
+    ppra.do_all([sg_test.slide_inner_on_aux_ag, sg_test.slide_outer_on_aux_ag])
+    # check here explicitly for limits and completion
+
+    ppra.do_all([sg_test.setaux_capture_outer_ag, sg_test.setaux_capture_inner_ag])
+    ppra.do_any(sg_test.slide_outer_off_aux_ag)
     ppra.do_any(sg_test.slide_inner_off_aux_ag)
+
     iters += 1
 
+ppra.do_all([sg_test.reset_capture_inner_ag, sg_test.reset_capture_outer_ag])
+
 # reset capture settings to make it possible to reference on mlim
-ppra.do_any(sg_test.reset_capture_inner_ag)
 
 
 # now move theouter axis onto the limit

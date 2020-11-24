@@ -34,7 +34,7 @@
 """
 
 from wrasc import reactive_agent as ra
-from inspect import getmembers
+from inspect import getmembers, isdatadescriptor
 from wrasc import ppmac_ra as ppra
 import examples.ppmac_code_templates as tls
 from os import path
@@ -719,7 +719,51 @@ class SmarGonTestAgents(ra.Device):
 
         self.out_path = out_path
 
+        self.prog10_code = r"OPEN PROG 10\nLINEAR\nABS\nTM(Q70)\nA(Q71)B(Q72)C(Q73)X(Q77)Y(Q78)Z(Q79)\nDWELL0\nCLOSE".splitlines()
+        self.plc10_code = 'disable plc 10\nopen plc 10\nif (Plc[3].Running==0)\n{\n    cmd "&1p q81=d0 q82=d1 q83=d2 q84=d3 q85=d4 q86=d5 q87=d6 q88=d7 q89=d8"\n}\nclose\nenable plc 10'.splitlines()
+        self.limit_cond = "Motor[6].pLimits=0".splitlines()
+
         super().__init__(**kwargs)
+
+        self.inner_on_mlim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Inner"],
+            pass_conds="Motor[L1].MinusLimit==1",
+        )
+
+        self.inner_on_plim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Inner"],
+            pass_conds="Motor[L1].PlusLimit==1",
+        )
+
+        self.outer_on_mlim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Outer"],
+            pass_conds="Motor[L1].MinusLimit==1",
+        )
+
+        self.outer_on_plim_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Outer"],
+            pass_conds="Motor[L1].PlusLimit==1",
+        )
+
+        # self.set_initial_setup_ag = ppra.WrascPmacGate(
+        #     owner=self,
+        #     verbose=_VERBOSE_,
+        #     ppmac=self.smargon_ppmac,
+        #     cry_cmds=self.limit_cond,
+        #     celeb_cmds=self.prog10_code + self.plc10_code,
+        # )
 
         # -------------------------------------------------------------------
         # Jog outer motor
@@ -806,7 +850,7 @@ class SmarGonTestAgents(ra.Device):
             pass_conds=["Motor[L1].AuxFault==0", "Motor[L1].InPos>0",],
             cry_cmds=[
                 "Motor[L1].JogSpeed={HomeVel}",
-                "#{L1}j:{SlideOff_Dir}{slideoff_egu}^0",
+                "#{L1}j:{SlideOff_Dir}{slideoff_egu}",
                 "Motor[L1].CapturePos=1",
             ],
             SlideOff_Dir="+",
@@ -837,6 +881,105 @@ class SmarGonTestAgents(ra.Device):
                 "Motor[L1].JogSpeed={JogSpeed}",
             ],
         )
+
+        self.setaux_outer_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Outer"],
+            cry_cmds=[
+                "Motor[L1].pAuxFault = Acc65E[0].DataReg[0].a",
+                "Motor[L1].AuxFaultBit = 9",
+                "Motor[L1].AuxFaultLevel = 0",
+            ],
+        )
+
+        self.slide_outer_on_aux_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Outer"],
+            #
+            pass_conds=["Motor[L1].AuxFault > 0",],
+            cry_cmds=["#{L1}jog-"],
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join(self.out_path, "slide_outer_on_aux_ag.csv"),
+            #
+            celeb_cmds=["#{L1}j/"],
+            wait_after_celeb=tst["Mot_Outer"]["limit_settle_time"],
+        )
+
+        self.setaux_capture_outer_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Outer"],
+            cry_cmds=[
+                "Motor[L1].pCaptFlag = Motor[L1].pAuxFault",
+                "Motor[L1].CaptFlagBit = 9",  # + 0 //8 for bit 0
+                "Motor[L1].AuxFaultLevel = 0",
+            ],
+            # and reset the Aux protection off
+            celeb_cmds=[
+                "Motor[L1].pAuxFault = 0",
+                "Motor[L1].AuxFaultBit = 0",
+                "Motor[L1].AuxFaultLevel = 0",
+            ],
+        )
+
+        self.slide_outer_off_aux_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Outer"],
+            #
+            pass_conds=["Motor[L1].AuxFault==0", "Motor[L1].InPos>0",],
+            cry_cmds=[
+                "Motor[L1].JogSpeed={HomeVel}",
+                "#{L1}j:{SlideOff_Dir}{slideoff_egu}",
+                "Motor[L1].CapturePos=1",
+            ],
+            SlideOff_Dir="+",
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join(self.out_path, "slide_outer_off_aux.csv"),
+            # resetting the changes in this action
+            celeb_cmds=[
+                # and resets the encoder count errors
+                "Gate3[L2].Chan[L3].CountError=0",
+            ],
+            wait_after_celeb=tst["Mot_Outer"]["jog_settle_time"],
+        )
+
+        self.reset_capture_outer_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Outer"],
+            cry_cmds=[
+                "Motor[L1].CaptureMode = 0",
+                "Motor[L1].pCaptFlag = Acc24E3[L2].Chan[L3].Status.a",
+                "Motor[L1].pCaptPos = Acc24E3[L2].Chan[L3].HomeCapt.a",
+                "Motor[L1].CaptFlagBit = 20",
+                # don't capture if its not done at flag fall:
+                "Motor[L1].CapturePos = 0",
+                # and restore JogSpeed
+                "Motor[L1].JogSpeed={JogSpeed}",
+            ],
+        )
+
+        #############################################################################
+
+        self.slide_inner_on_aux_ag.poll_pr = lambda ag_self: not (
+            ag_self.owner.inner_on_mlim_ag.is_done
+            or ag_self.owner.inner_on_plim_ag.is_done
+            or ag_self.owner.outer_on_mlim_ag.is_done
+            or ag_self.owner.outer_on_plim_ag.is_done
+        )
+
+        self.slide_inner_off_aux_ag.poll_pr = self.slide_inner_on_aux_ag.poll_pr
+        self.slide_outer_on_aux_ag.poll_pr = self.slide_inner_on_aux_ag.poll_pr
 
 
 if __name__ == "__main__":

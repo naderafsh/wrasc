@@ -1,10 +1,5 @@
 Mot_Inner:
-  HomeOffset_EGU: 0
-  HomeVel: 1
-  slideoff_egu: 200
   ID: SGON_M3
-  EGU: um
-  JogSpeed: 5
   L1: 3
   L2: 0
   L3: 2
@@ -12,19 +7,16 @@ Mot_Inner:
   L5: 2
   L6: 2
   L7: 11
-  attackpos_egu: 2000
-  bigjog_egu: 1000
-  encoder_res: 1
-  encoder_reversed: false
-  fullrange_egu: 50000
-  jog_settle_time: 1
+  
+  EGU: um
+  HomeVel: 1
+  JogSpeed: 5  
+  slideoff_egu: 1000
   limit_settle_time: 2
-  smalljog_egu: 10
+  jog_settle_time: 1
+
 Mot_Outer:
-  HomeOffset_EGU: 0
-  HomeVel_EGU: 1
   ID: SGON_M4
-  JogSpeed_EGU: 1
   L1: 4
   L2: 0
   L3: 3
@@ -32,20 +24,18 @@ Mot_Outer:
   L5: 3
   L6: 3
   L7: 12
-  attackpos_egu: 2
-  bigjog_egu: 1
-  encoder_res: 1
-  encoder_reversed: false
-  fullrange_egu: 50
-  jog_settle_time: 1
+  
+  EGU: um
+  HomeVel: 1
+  JogSpeed: 5  
+  slideoff_egu: 1500
   limit_settle_time: 2
-  smalljog_egu: 0.1
+  jog_settle_time: 1
+
 
 clearance_egu: 10
 
-
-loop_repeats: 5
-ppglobal_fname: C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym
+loop_repeats: 50
 ppmac_hostname: 10.109.25.22
 ppmac_is_backward: true
 wrasc_cycle_period: 0.25
