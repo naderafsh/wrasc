@@ -168,10 +168,18 @@ def parse_vars(stat: str):
 
     # find exponential notations and convert them.
     # ppmac doesn't understand 5e-3
+    # only if it is not a quoteed string which may contain Acc24E3 !!!
+    # TODO fix the hack
+    stat = stat.replace("Acc24E", "Acc24_E_")
+    stat = stat.replace("Acc65E", "Acc65_E_")
+
     exp_nums = re.findall(regex_anynum, stat)
     for v in exp_nums:
         if "e" in v.lower():
             stat = stat.replace(v, f"{float(v):.8f}")
+
+    stat = stat.replace("Acc65_E_", "Acc65E")
+    stat = stat.replace("Acc24_E_", "Acc24E")
 
     # split the statement
     for v in re.split(r"[\+\-\*\/=><! \(\)]", stat):
@@ -1288,7 +1296,7 @@ class PpmacMotorShell(object):
     """
 
 
-def process_agents(ag_list):
+def do_any(ag_list):
     """process a list of ppra agent, separately
 
     Args:

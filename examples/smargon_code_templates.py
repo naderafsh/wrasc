@@ -26,12 +26,14 @@ def assert_pos_wf(xx: int, target_pos, tol):
         [f"#{xx}jog=={target_pos}"],
     )
 
+
 def cry_for(conds):
     cry_list = [cond.replace("=", "==") if ("=" in cond) else cond for cond in conds]
     return cry_list
 
+
 prog10_code = r"OPEN PROG 10\nLINEAR\nABS\nTM(Q70)\nA(Q71)B(Q72)C(Q73)X(Q77)Y(Q78)Z(Q79)\nDWELL0\nCLOSE"
-plc10_code = r'open plc 10\nif (Plc[3].Running==0)\n{\n    cmd "&1p q81=d0 q82=d1 q83=d2 q84=d3 q85=d4 q86=d5 q87=d6 q88=d7 q89=d8"\n}\nclose\n \nenable plc 10'
+plc10_code = 'disable plc 10\nopen plc 10\nif (Plc[3].Running==0)\n{\n    cmd "&1p q81=d0 q82=d1 q83=d2 q84=d3 q85=d4 q86=d5 q87=d6 q88=d7 q89=d8"\n}\nclose\nenable plc 10'
 limit_cond = "Motor[6].pLimits=0"
 
 pre_cond = [limit_cond]
@@ -74,8 +76,17 @@ jog_capt_rbk_tl = [
 ]
 
 
-check_on_aux = ["Motor[L1].pAuxFault > 0","Motor[L1].AuxFault > 0","Motor[L1].InPos>0"]
-slideoff_capt = ["Motor[3].pCaptFlag = Motor[3].pAuxFault","Motor[3].CaptFlagBit = 8", "Motor[3].pAuxFault = 0", "Motor[3].AuxFaultLevel = 0"]
+check_on_aux = [
+    "Motor[L1].pAuxFault > 0",
+    "Motor[L1].AuxFault > 0",
+    "Motor[L1].InPos>0",
+]
+slideoff_capt = [
+    "Motor[3].pCaptFlag = Motor[3].pAuxFault",
+    "Motor[3].CaptFlagBit = 8",
+    "Motor[3].pAuxFault = 0",
+    "Motor[3].AuxFaultLevel = 0",
+]
 
 
 check_off_limit_inpos_tl = [

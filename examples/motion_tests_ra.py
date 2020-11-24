@@ -690,6 +690,155 @@ class OL_Rdb_Lim2Lim(ra.Device):
         return jog_agent
 
 
+class SmarGonTestAgents(ra.Device):
+    def __init__(self, tst=None, out_path="sg_out", _VERBOSE_=1, **kwargs):
+        self.dmDeviceType = "OLRDBCapt"
+        self.smargon_ppmac = ppra.PPMAC(tst["ppmac_hostname"], backward=True)
+
+        default_pass_logs = [
+            # readback capture via companion axis
+            "Motor[3].CapturedPos",
+            "Motor[4].CapturedPos",
+            # readback and step position at stop position
+            "#3p",
+            "#4p",
+            # test condition parameter
+            "Motor[3].JogSpeed",
+            "Motor[4].JogSpeed",
+            # position references
+            "Motor[3].HomePos",
+            "Motor[4].HomePos",
+            # Check these for errors
+            "Motor[3].TriggerNotFound",
+            "Motor[4].TriggerNotFound",
+            "Gate3[0].Chan[2].CountError",
+            "Gate3[0].Chan[3].CountError",
+            "Motor[3].DacLimit",
+            "Motor[4].DacLimit",
+        ]
+
+        self.out_path = out_path
+
+        super().__init__(**kwargs)
+
+        # -------------------------------------------------------------------
+        # Jog outer motor
+        # -------- motorB
+        # self.jog_outer_ag = ppra.WrascPmacGate(
+        #     owner=self,
+        #     verbose=_VERBOSE_,
+        #     ppmac=self.smargon_ppmac,
+        #     **tst["Mot_Outer"],
+        #     wait_after_celeb=tst["Mot_Outer"]["jog_settle_time"],
+        #     #
+        #     pass_logs=default_pass_logs,
+        #     csv_file_path=path.join(self.out_path, "jog_outer_ag.csv"),
+        # )
+
+        # self.jog_inner_ag = ppra.WrascPmacGate(
+        #     owner=self,
+        #     verbose=_VERBOSE_,
+        #     ppmac=self.smargon_ppmac,
+        #     **tst["Mot_Inner"],
+        #     wait_after_celeb=tst["Mot_Inner"]["jog_settle_time"],
+        #     #
+        #     pass_logs=default_pass_logs,
+        #     csv_file_path=path.join(self.out_path, "jog_inner_ag.csv"),
+        # )
+
+        # if not on the switch, and already Captured postition then protect
+        # 0 - check configuration
+        # also add axis confix if there are deviations from baseConfig
+        self.setaux_inner_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Inner"],
+            cry_cmds=[
+                "Motor[L1].pAuxFault = Acc65E[0].DataReg[0].a",
+                "Motor[L1].AuxFaultBit = 8",
+                "Motor[L1].AuxFaultLevel = 0",
+            ],
+        )
+
+        # -------- motor A
+        self.slide_inner_on_aux_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Inner"],
+            #
+            pass_conds=["Motor[L1].AuxFault > 0",],
+            cry_cmds=["#{L1}jog-"],
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join(self.out_path, "slide_inner_on_aux_ag.csv"),
+            #
+            celeb_cmds=["#{L1}j/"],
+            wait_after_celeb=tst["Mot_Inner"]["limit_settle_time"],
+        )
+
+        self.setaux_capture_inner_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Inner"],
+            cry_cmds=[
+                "Motor[L1].pCaptFlag = Motor[L1].pAuxFault",
+                "Motor[L1].CaptFlagBit = 8",  # + 0 //8 for bit 0
+                "Motor[L1].AuxFaultLevel = 0",
+            ],
+            # and reset the Aux protection off
+            celeb_cmds=[
+                "Motor[L1].pAuxFault = 0",
+                "Motor[L1].AuxFaultBit = 0",
+                "Motor[L1].AuxFaultLevel = 0",
+                "Motor[L1].CaptureMode = 1",
+            ],
+        )
+
+        self.slide_inner_off_aux_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Inner"],
+            #
+            pass_conds=["Motor[L1].AuxFault==0", "Motor[L1].InPos>0",],
+            cry_cmds=[
+                "Motor[L1].JogSpeed={HomeVel}",
+                "#{L1}j:{SlideOff_Dir}{slideoff_egu}^0",
+                "Motor[L1].CapturePos=1",
+            ],
+            SlideOff_Dir="+",
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join(self.out_path, "slide_inner_off_aux.csv"),
+            # resetting the changes in this action
+            celeb_cmds=[
+                # and resets the encoder count errors
+                "Gate3[L2].Chan[L3].CountError=0",
+            ],
+            wait_after_celeb=tst["Mot_Inner"]["jog_settle_time"],
+        )
+
+        self.reset_capture_inner_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Inner"],
+            cry_cmds=[
+                "Motor[L1].CaptureMode = 0",
+                "Motor[L1].pCaptFlag = Acc24E3[L2].Chan[L3].Status.a",
+                "Motor[L1].pCaptPos = Acc24E3[L2].Chan[L3].HomeCapt.a",
+                "Motor[L1].CaptFlagBit = 20",
+                # don't capture if its not done at flag fall:
+                "Motor[L1].CapturePos = 0",
+                # and restore JogSpeed
+                "Motor[L1].JogSpeed={JogSpeed}",
+            ],
+        )
+
+
 if __name__ == "__main__":
     pass
 

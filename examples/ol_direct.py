@@ -14,10 +14,10 @@ agents = ppra.ra.compile_n_install({}, globals().copy(), "WORKSHOP01")
 max_loop = 100
 
 
-ppra.process_agents(ol_test.ma_base_config_ag)
-ppra.process_agents(ol_test.ma_test_config_ag)
-ppra.process_agents(ol_test.ma_go_mlim_ag)
-ppra.process_agents(ol_test.ma_home_on_mlim_ag)
+ppra.do_any(ol_test.ma_base_config_ag)
+ppra.do_any(ol_test.ma_test_config_ag)
+ppra.do_any(ol_test.ma_go_mlim_ag)
+ppra.do_any(ol_test.ma_home_on_mlim_ag)
 
 i = 0
 while i < tst["loop_repeats"]:
@@ -40,7 +40,7 @@ while i < tst["loop_repeats"]:
                 -tst["Mot_A"]["bigjog_steps"] + tst["Mot_A"]["smalljog_steps"]
             ) * (1 if is_positive_jog else -1)
 
-        ppra.process_agents(
+        ppra.do_any(
             [ol_test.ma_slide_on_plim_ag, ol_test.jog_agent(jog_dest, is_positive_jog)]
         )
         if ol_test.ma_slide_on_plim_ag.is_done:
@@ -49,7 +49,7 @@ while i < tst["loop_repeats"]:
             n += 1
             print(f"step {n}")
 
-    ppra.process_agents(ol_test.ma_slide_off_plim_ag)
+    ppra.do_any(ol_test.ma_slide_off_plim_ag)
 
     n = 0
     jog_dest = tst["Mot_A"]["fullrange_steps"]
@@ -67,7 +67,7 @@ while i < tst["loop_repeats"]:
                 -tst["Mot_A"]["bigjog_steps"] + tst["Mot_A"]["smalljog_steps"]
             ) * (1 if is_positive_jog else -1)
 
-        ppra.process_agents(
+        ppra.do_any(
             [ol_test.ma_slide_on_mlim_ag, ol_test.jog_agent(jog_dest, is_positive_jog)]
         )
         if ol_test.ma_slide_on_mlim_ag.is_done:
@@ -75,7 +75,7 @@ while i < tst["loop_repeats"]:
         else:
             n += 1
 
-    ppra.process_agents(ol_test.ma_slide_off_mlim_ag)
+    ppra.do_any(ol_test.ma_slide_off_mlim_ag)
 
 
 print("go celebrate now!")

@@ -80,7 +80,7 @@ class PpmacToolMt:
 
             while True:
 
-                print("Trying to connect to ppmac at {:}..".format(self.host))
+                print("connecting to ppmac at {:}.".format(self.host))
                 try:
                     self.ppmac_ssh_paramiko = paramiko.SSHClient()
                     self.ppmac_ssh_paramiko.set_missing_host_key_policy(
@@ -108,7 +108,7 @@ class PpmacToolMt:
                     time.sleep(2)
 
                 # If we could not connect within 60s time limit
-                if i == 30:
+                if i == 5:
                     print("Could not connect to {:}. Giving up".format(self.host))
                     sys.exit(1)
 
