@@ -1332,13 +1332,14 @@ def do_ags(ag_list, cycle_period=0.25, all_done=True, verbose=None):
 
         while next_infer_time < timer():
             next_infer_time += cycle_period
-        next_act_time = next_infer_time + cycle_period / 5
+        next_act_time = next_infer_time + cycle_period / (2)
         lead_time = next_infer_time - timer()
         if lead_time > 0:
             time.sleep(lead_time)
+            print("i", end="")
         else:
             pass
-            print(",", end="")
+            print("I", end="")
 
         for ag_self in ag_list:
             ag_self: WrascPmacGate
@@ -1350,11 +1351,13 @@ def do_ags(ag_list, cycle_period=0.25, all_done=True, verbose=None):
                 print(f"{ag_self.name}: {desc}")
 
         run_time = timer() - time_0
+
         lead_time = next_act_time - timer()
         if lead_time > 0:
             time.sleep(lead_time)
+            print("o", end="")
         else:
-            print(".", end="")
+            print("O", end="")
 
         for ag_self in ag_list:
             ag_self: WrascPmacGate
