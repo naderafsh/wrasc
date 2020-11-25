@@ -227,24 +227,26 @@ def parse_cmds(cmds):
     for cmd in cmds:
         assert isinstance(cmd, str)
 
-        # purge spaces and separate right and left side
-        # need to add all possible online comands here too: "^:*" ?
-        cmd_split = cmd.replace(" ", "").split("=")
+        cmd_split = cmd.split("=")
         cmd_left = cmd_split[0]
         if len(cmd_split) > 1:
-            # in case of jog==45 , right side would be
-            cmd_right = cmd_split[-1]
+            # purge spaces and separate right and left side
+            # need to add all possible online comands here too: "^:*" ?
+            cmd_right = cmd_split[-1].replace(" ", "")
             if (not isPmacNumber(cmd_right)) and any(i in cmd_right for i in "+-*/^"):
                 # right side is ILLEGAL as a ppmac online command. Mark it as a macro for late evaluation
                 cmd_right = macrostrs[0] + cmd_right + macrostrs[1]
 
             cmds_out.append(f"{cmd_left}={cmd_right}")
-        else:
+        elif cmd:
+            # don't add empty commands !
             cmds_out.append(cmd)
-
     # purge spaces in command strings
 
-    return "\n".join(cmds_out).replace(" ", "")
+    if " " in cmds_out:
+        print("changed here")
+
+    return "\n".join(cmds_out)
 
 
 def parse_stats(stat_list):
@@ -322,9 +324,9 @@ def expand_pmac_stats(stats, **vars):
         for lvar in set(l_vars):
             # put L# in curley brackets
             stat = (
-                stat.replace(lvar, "{" + lvar + "}")
-                .replace("{{", "{")
-                .replace("}}", "}")
+                stat.replace(lvar, macrostrs[0] + lvar + macrostrs[1])
+                .replace(macrostrs[0] + macrostrs[0], macrostrs[0])
+                .replace(macrostrs[1] + macrostrs[1], macrostrs[1])
             )
 
         try:
@@ -815,8 +817,8 @@ class WrascPmacGate(ra.Agent):
             [type]: [description]
         """
 
-        # purge spaces
-        cmds_str = cmds_str.replace(" ", "")
+        # NO NEED TO purge spaces
+        # cmds_str = cmds_str.replace(" ", "")
 
         # find all of the macros which are previously marked by {} at parse time
         macro_list = re.findall(f"(?:{macrostrs[0]})(.*?)(?:{macrostrs[1]})", cmds_str)
@@ -1297,41 +1299,14 @@ class PpmacMotorShell(object):
     """
 
 
-def do_any(ag_list):
-    """process a list of ppra agents until any is done
-
-    Args:
-        ag_self (ppra.WrascPmacGate): [description]
-
-    Returns:
-        [type]: [description]
-    """
-
-    if not isinstance(ag_list, list):
-        ag_list = [ag_list]
-
-    for ag in ag_list:
-        ag.reset()
-
-    while not any([ag.is_done for ag in ag_list]):
-
-        for ag_self in ag_list:
-            ag_self: WrascPmacGate
-            ag_self._in_proc()
-
-            desc = ""
-            if ag_self.verbose > 0:
-                desc = ag_self.annotate()[1]
-                print(f"{ag_self.name}: {desc}")
-
-        sleep(0.25)
-
-        for ag_self in ag_list:
-            ag_self: WrascPmacGate
-            ag_self._out_proc()
+def ags_done(ag_list, all_done):
+    if all_done:
+        return all([ag.is_done for ag in ag_list])
+    else:
+        return any([ag.is_done for ag in ag_list])
 
 
-def do_all(ag_list):
+def do_ags(ag_list, cycle_period=0.25, all_done=True, verbose=None):
     """process a list of ppra agents until all are done
 
     Args:
@@ -1345,20 +1320,41 @@ def do_all(ag_list):
         ag_list = [ag_list]
 
     for ag in ag_list:
+        ag: WrascPmacGate
         ag.reset()
+        if verbose:
+            ag.verbose = verbose
 
-    while not all([ag.is_done for ag in ag_list]):
+    time_0 = timer()
+    next_infer_time = time_0 + cycle_period
+
+    while not ags_done(ag_list, all_done):
+
+        while next_infer_time < timer():
+            next_infer_time += cycle_period
+        next_act_time = next_infer_time + cycle_period / 5
+        lead_time = next_infer_time - timer()
+        if lead_time > 0:
+            time.sleep(lead_time)
+        else:
+            pass
+            print(",", end="")
 
         for ag_self in ag_list:
             ag_self: WrascPmacGate
             ag_self._in_proc()
 
             desc = ""
-            if ag_self.verbose > 0:
+            if ag_self.verbose > 1:
                 desc = ag_self.annotate()[1]
                 print(f"{ag_self.name}: {desc}")
 
-        sleep(0.25)
+        run_time = timer() - time_0
+        lead_time = next_act_time - timer()
+        if lead_time > 0:
+            time.sleep(lead_time)
+        else:
+            print(".", end="")
 
         for ag_self in ag_list:
             ag_self: WrascPmacGate
