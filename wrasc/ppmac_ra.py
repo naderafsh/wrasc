@@ -38,7 +38,8 @@ macrostrs = ["{", "}"]
 
 ppmac_func_dict = {"EXP2": "2**", "int": "int", "Fraction": "Fraction"}
 
-regex_anynum = r"[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?"
+regex_anynum = "(?:[^a-z^A-Z])([+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?)"
+# "(?:[^a-z^A-Z])[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?"  # r"[+\-]?(?:0|[1-9]\d*)(?:\.\d*)?(?:[eE][+\-]?\d+)?"
 regex_exp_notification = r"[+-]?\d+(?:\.\d*(?:[eE][+-]?\d+)?)"
 
 
@@ -169,17 +170,12 @@ def parse_vars(stat: str):
     # find exponential notations and convert them.
     # ppmac doesn't understand 5e-3
     # only if it is not a quoteed string which may contain Acc24E3 !!!
-    # TODO fix the hack
-    stat = stat.replace("Acc24E", "Acc24_E_")
-    stat = stat.replace("Acc65E", "Acc65_E_")
+    # DONE fix the hack
 
     exp_nums = re.findall(regex_anynum, stat)
     for v in exp_nums:
         if "e" in v.lower():
             stat = stat.replace(v, f"{float(v):.8f}")
-
-    stat = stat.replace("Acc65_E_", "Acc65E")
-    stat = stat.replace("Acc24_E_", "Acc24E")
 
     # split the statement
     for v in re.split(r"[\+\-\*\/=><! \(\)]", stat):
@@ -212,6 +208,18 @@ def parse_vars(stat: str):
 
 
 def parse_cmds(cmds):
+    """pasres commands:
+    finds and marks the macros on the right hand of commands
+
+    Args:
+        cmds ([type]): [description]
+
+    Raises:
+        RuntimeError: bad command syntax
+
+    Returns:
+        [type]: [description]
+    """
 
     if cmds is None:
         return None
@@ -224,8 +232,23 @@ def parse_cmds(cmds):
 
     # convert list to one string of lines
     cmds_out = []
+    buffer_mode = False
     for cmd in cmds:
         assert isinstance(cmd, str)
+
+        # is the command oppening a buffer? if yes, that changes the context
+        if cmd.upper().startswith("OPEN"):
+            # if "open" in cmd:
+            # remember this
+            buffer_mode = True
+
+        # Close commands shall be at the start of the line to be recognised
+        if cmd.upper().startswith("CLOSE"):
+            buffer_mode = False
+
+        if buffer_mode:
+            cmds_out.append(cmd)
+            continue
 
         cmd_split = cmd.split("=")
         cmd_left = cmd_split[0]
@@ -363,8 +386,10 @@ def ppwr_poll_in(ag_self: ra.Agent):
             ag_self.cry_tries = 0
 
     # TODO: it is tricky here as a continuous poll is not always desired?
+
+    # if there are no conditions to check, then it is a pass
     if not ag_self.pass_conds_parsed or len(ag_self.pass_conds_parsed) < 1:
-        return ra.StateLogics.Invalid, "no checks"
+        return ra.StateLogics.Valid, "no checks"
 
     # acquire left sides
     # TODO optimise this routine by:
@@ -506,8 +531,30 @@ class PPMAC:
             return ["", ""], True, ""
 
         if isinstance(self.gpascii, GpasciiClient):
-            tpl = self.gpascii.send_receive_raw(cmds=command, timeout=timeout)
-            return tpl
+
+            # TODO turn this to a decorator
+            # split commamnds if more than limit
+            N_MAX_CMD = 10000
+
+            resp = []
+            success = True
+            errmsg = ""
+
+            n_begin = 0
+            n_end = min(n_begin + N_MAX_CMD, n_to_receive)
+            while n_end > n_begin:
+                command_ = "\n".join(command.split("\n")[n_begin:n_end])
+                resp_, success, errmsg = self.gpascii.send_receive_raw(
+                    cmds=command_, timeout=timeout
+                )
+                resp += resp_
+
+                if not success:
+                    return resp, success, errmsg
+                n_begin = n_end
+                n_end = n_begin + min(N_MAX_CMD, n_to_receive - n_begin)
+
+            return resp, success, errmsg
 
         if isinstance(self.gpascii, PpmacToolMt):
             # check if there are only one command
@@ -743,7 +790,7 @@ class WrascPmacGate(ra.Agent):
             self.cry_retries = cry_retries
 
         if (not pass_conds) and (cry_cmds):
-            # an empty pass-cond (but not a None) mneans: chacke for all of the command statements:
+            # an empty pass-cond (but not a None) means: check for all of the command statements:
             pass_conds = stats_to_conds(cry_cmds)
 
         self.pass_conds = expand_pmac_stats(
@@ -804,6 +851,8 @@ class WrascPmacGate(ra.Agent):
         self.ndigits = 6
 
         super().setup(**self.kwargs)
+
+        return self
 
     def eval_cmd(self, cmds_str):
 
@@ -976,6 +1025,8 @@ class WrascPmacGate(ra.Agent):
                     precision = 0.0625
                 elif qual.endswith("scalefactor"):
                     precision = 1e-16
+                elif qual.endswith("freq"):
+                    precision = 0.5
                 else:
                     precision = 1e-16
 

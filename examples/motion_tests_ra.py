@@ -355,31 +355,43 @@ class OL_Rdb_Lim2Lim(ra.Device):
         ra ([type]): [description]
     """
 
-    def __init__(self, tst=None, _VERBOSE_=1, **kwargs):
+    def __init__(self, tst=None, _VERBOSE_=1, motor_id="Mot_A", **kwargs):
         self.dmDeviceType = "OLRDBCapt"
         super().__init__(**kwargs)
 
-        step_res = tst["Mot_A"]["step_res"] = (
+        self.motor_id = motor_id
+
+        step_res = tst[self.motor_id]["step_res"] = (
             1
-            / tst["Mot_A"]["fullsteps_per_rev"]
-            / tst["Mot_A"]["micro_steps"]
-            * tst["Mot_A"]["overall_egu_per_rev"]
+            / tst[self.motor_id]["fullsteps_per_rev"]
+            / tst[self.motor_id]["micro_steps"]
+            * tst[self.motor_id]["overall_egu_per_rev"]
         )
-        enc_res = tst["Mot_A"]["encoder_res"]
-        tst["Mot_A"]["smalljog_steps"] = tst["Mot_A"]["smalljog_egu"] / step_res
-        tst["Mot_A"]["bigjog_steps"] = tst["Mot_A"]["bigjog_egu"] / step_res
+        enc_res = tst[self.motor_id]["encoder_res"]
+        tst[self.motor_id]["smalljog_steps"] = (
+            tst[self.motor_id]["smalljog_egu"] / step_res
+        )
+        tst[self.motor_id]["bigjog_steps"] = tst[self.motor_id]["bigjog_egu"] / step_res
 
-        tst["Mot_A"]["jog_step_ratio"] = (
-            tst["Mot_A"]["bigjog_egu"] / tst["Mot_A"]["smalljog_egu"]
+        tst[self.motor_id]["jog_step_ratio"] = (
+            tst[self.motor_id]["bigjog_egu"] / tst[self.motor_id]["smalljog_egu"]
         )
-        tst["Mot_A"]["HomeOffset"] = tst["Mot_A"]["HomeOffset_EGU"] / step_res
-        tst["Mot_A"]["attackpos_enc"] = (
-            tst["Mot_A"]["attackpos_egu"] + tst["Mot_A"]["HomeOffset_EGU"]
+        tst[self.motor_id]["HomeOffset"] = (
+            tst[self.motor_id]["HomeOffset_EGU"] / step_res
+        )
+        tst[self.motor_id]["attackpos_enc"] = (
+            tst[self.motor_id]["attackpos_egu"] + tst[self.motor_id]["HomeOffset_EGU"]
         ) / enc_res
-        tst["Mot_A"]["JogSpeed"] = tst["Mot_A"]["JogSpeed_EGU"] / step_res / 1000
-        tst["Mot_A"]["HomeVel"] = tst["Mot_A"]["HomeVel_EGU"] / step_res / 1000
+        tst[self.motor_id]["JogSpeed"] = (
+            tst[self.motor_id]["JogSpeed_EGU"] / step_res / 1000
+        )
+        tst[self.motor_id]["HomeVel"] = (
+            tst[self.motor_id]["HomeVel_EGU"] / step_res / 1000
+        )
 
-        tst["Mot_A"]["fullrange_steps"] = tst["Mot_A"]["fullrange_egu"] / step_res
+        tst[self.motor_id]["fullrange_steps"] = (
+            tst[self.motor_id]["fullrange_egu"] / step_res
+        )
 
         clearance_enc = tst["clearance_egu"] / enc_res
 
@@ -392,26 +404,48 @@ class OL_Rdb_Lim2Lim(ra.Device):
         pp_glob_dict = ppra.load_pp_globals(tst["ppglobal_fname"])
         with open(tst["baseconfig_fname"]) as f:
             base_config = f.read().splitlines()
-            f.close
 
         # using a default set of parameters to log for each motor
         default_pass_logs = ppra.expand_globals(
-            tls.log_main_n_companion, pp_glob_dict, **tst["Mot_A"]
+            tls.log_main_n_companion, pp_glob_dict, **tst[self.motor_id]
         )
+
+        pp_glob_dict = ppra.load_pp_globals(tst["ppglobal_fname"])
+        with open(r"C:\Users\afsharn\gitdir\wrasc\examples\data\systemsetup.cfg") as f:
+            system_config = f.read().splitlines()
 
         ################################################################################################################
         # folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #
         ################################################################################################################
 
+        # -2 - check configuration
+        # -------- motor A
+        system_cmds = ppra.expand_globals(
+            system_config, pp_glob_dict, **tst[self.motor_id]
+        )
+        self.system_config_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            **tst[self.motor_id],
+            # validate / download calibration
+            pass_conds=ppra.stats_to_conds(system_cmds),
+            cry_cmds=system_cmds,
+            cry_retries=2,
+        )
+
         # -1 - check configuration
         # -------- motor A
-        config_cmds = ppra.expand_globals(base_config, pp_glob_dict, **tst["Mot_A"])
+        config_cmds = ppra.expand_globals(
+            base_config, pp_glob_dict, **tst[self.motor_id]
+        )
         self.ma_base_config_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
-            # validate / download calibration
+            **tst[self.motor_id],
+            # validate / download base configuration
+            pass_conds=ppra.stats_to_conds(config_cmds),
             cry_cmds=config_cmds,
             cry_retries=2,
             # phase the motor
@@ -435,17 +469,17 @@ class OL_Rdb_Lim2Lim(ra.Device):
         # also add axis confix if there are deviations from baseConfig
         rev_enc_cmd = (
             ["PowerBrick[L2].Chan[L3].EncCtrl=7"]
-            if tst["Mot_A"]["encoder_reversed"]
+            if tst[self.motor_id]["encoder_reversed"]
             else ["PowerBrick[L2].Chan[L3].EncCtrl=3"]
         )
         current_stat = ppra.expand_globals(
-            ["full_current(L1)=1"], pp_glob_dict, **tst["Mot_A"]
+            ["full_current(L1)=1"], pp_glob_dict, **tst[self.motor_id]
         )
         self.ma_test_config_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
+            **tst[self.motor_id],
             cry_cmds=tls.config_rdb_capt
             + rev_enc_cmd
             + current_stat
@@ -462,10 +496,10 @@ class OL_Rdb_Lim2Lim(ra.Device):
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
+            **tst[self.motor_id],
             pass_conds=tls.is_on_mlim_inpos,
             cry_cmds="#{L1}j-",
-            wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
+            wait_after_celeb=tst[self.motor_id]["limit_settle_time"],
             celeb_cmds=["#{L1}j-", "#{L7}kill"],
         )
         # -------------------------------------------------------------------
@@ -474,11 +508,11 @@ class OL_Rdb_Lim2Lim(ra.Device):
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
+            **tst[self.motor_id],
             pass_conds=["Motor[L1].HomeComplete==1"] + tls.is_off_limit_inpos,
             cry_cmds="#{L1}hm",
-            celeb_cmds=["#{L7}kill"],
-            wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
+            celeb_cmds=["#{L7}kill", "Motor[L7].HomePos=Motor[L7].Pos"],
+            wait_after_celeb=tst[self.motor_id]["limit_settle_time"],
         )
         # -------------------------------------------------------------------
         # 1 - Move onto the plus limit and wait to stabilise,
@@ -488,7 +522,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
+            **tst[self.motor_id],
             #
             pass_conds=tls.is_on_plim_inpos,
             # cry_cmds=["#{L1}jog+"],
@@ -497,7 +531,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             csv_file_path=path.join("autest_out", "ma_slide_on_plim.csv"),
             #
             celeb_cmds=["#{L7}kill"],
-            wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
+            wait_after_celeb=tst[self.motor_id]["limit_settle_time"],
         )
 
         # -------- motor A
@@ -505,8 +539,8 @@ class OL_Rdb_Lim2Lim(ra.Device):
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
-            wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
+            **tst[self.motor_id],
+            wait_after_celeb=tst[self.motor_id]["jog_settle_time"],
             #
             pass_logs=default_pass_logs,
             csv_file_path=path.join("autest_out", "ma_jog_pos.csv"),
@@ -516,8 +550,8 @@ class OL_Rdb_Lim2Lim(ra.Device):
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
-            wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
+            **tst[self.motor_id],
+            wait_after_celeb=tst[self.motor_id]["jog_settle_time"],
             #
             pass_logs=default_pass_logs,
             csv_file_path=path.join("autest_out", "ma_jog_neg.csv"),
@@ -527,7 +561,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
+            **tst[self.motor_id],
             #
             pass_conds=tls.is_off_limit_inpos,
             cry_cmds=[
@@ -546,7 +580,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
                 "Motor[L1].JogSpeed={JogSpeed}",
                 "PowerBrick[L2].Chan[L3].CountError=0",
             ],
-            wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
+            wait_after_celeb=tst[self.motor_id]["jog_settle_time"],
         )
 
         # -------------------------------------------------------------------
@@ -557,7 +591,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
+            **tst[self.motor_id],
             #
             pass_conds=tls.is_on_mlim_inpos,
             # cry_cmds=["#{L1}jog-"],
@@ -566,7 +600,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             csv_file_path=path.join("autest_out", "ma_slide_on_mlim.csv"),
             #
             celeb_cmds=["#{L7}kill"],
-            wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
+            wait_after_celeb=tst[self.motor_id]["limit_settle_time"],
         )
 
         # -------------------------------------------------------------------
@@ -577,7 +611,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.test_ppmac,
-            **tst["Mot_A"],
+            **tst[self.motor_id],
             #
             pass_conds=tls.is_off_limit_inpos,
             cry_cmds=[
@@ -596,7 +630,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
                 "Motor[L1].JogSpeed={JogSpeed}",
                 "PowerBrick[L2].Chan[L3].CountError=0",
             ],
-            wait_after_celeb=tst["Mot_A"]["jog_settle_time"],
+            wait_after_celeb=tst[self.motor_id]["jog_settle_time"],
         )
 
         # -------------------------------------------------------------------
@@ -612,6 +646,25 @@ class OL_Rdb_Lim2Lim(ra.Device):
                 f"Motor[3].ActVel - Motor[4].ActVel > 0",
             ],
             celeb_cmds=[f"#3,4 kill"],
+        )
+
+        self.prog10_code = "OPEN PROG 10\nLINEAR\nABS\nTM(Q70)\nA(Q71)B(Q72)C(Q73)X(Q77)Y(Q78)Z(Q79)\nDWELL0\nCLOSE".splitlines()
+        self.plc10_code = 'disable plc 10\nopen plc 10\nif (Plc[3].Running==0)\n{\n    cmd "&1p q81=d0 q82=d1 q83=d2 q84=d3 q85=d4 q86=d5 q87=d6 q88=d7 q89=d8"\n}\nclose\nenable plc 10'.splitlines()
+        self.limit_cond = "Motor[6].pLimits=0".splitlines()
+
+        self.set_initial_setup_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            pass_conds=[],  # means pass anyways
+            celeb_cmds=self.prog10_code + self.plc10_code,
+        )
+
+        self.set_wpKey_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.test_ppmac,
+            cry_cmds=["sys.WpKey=$AAAAAAAA"],
         )
 
         def reset_after_kill(ag_self: ra.Agent):
@@ -639,8 +692,16 @@ class OL_Rdb_Lim2Lim(ra.Device):
         # -------------------------------------------------------------------
         # set the forced sequence rules
 
+        self.system_config_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.set_wpKey_ag.is_done
+        )
+
+        self.ma_base_config_ag.poll_pr = (
+            lambda ag_self: ag_self.owner.system_config_ag.is_done
+        )
+
         self.ma_test_config_ag.poll_pr = (
-            lambda ag_self: ag_self.owner.ma_base_config_ag.is_done
+            lambda ag_self: ag_self.owner.ma_base_config_ag.is_done or True
         )
         self.ma_go_mlim_ag.poll_pr = (
             lambda ag_self: ag_self.owner.ma_test_config_ag.is_done
@@ -677,10 +738,10 @@ class OL_Rdb_Lim2Lim(ra.Device):
     def jog_agent(self, jog_dest, is_positive_jog):
 
         if is_positive_jog:
-            ineq = ">" + str(jog_dest) + " - 10"
+            ineq = ">" + str(jog_dest) + " - 0.001"
             jog_agent = self.ma_jog_pos_ag
         else:
-            ineq = "<" + str(jog_dest) + " + 10"
+            ineq = "<" + str(jog_dest) + " + 0.001"
             jog_agent = self.ma_jog_neg_ag
 
         jog_agent.setup(

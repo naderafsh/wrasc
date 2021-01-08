@@ -29,6 +29,13 @@ for stat in test_stats:
 print("expand_pmac_stats test 1 passed.")
 
 
+cmds = 'disable plc 10\nOPEN plc 10\nif (Plc[3].Running==0)\n{\n    cmd "&1p q81=d0 q82=d1 q83=d2 q84=d3 q85=d4 q86=d5 q87=d6 q88=d7 q89=d8"\n}\nclose\nenable plc 10'.splitlines()
+
+parsed_cmds = ppra.parse_cmds(cmds).splitlines()
+
+assert parsed_cmds == cmds, f"\nExpected: {parsed_cmds} \nActual: {cmds}"
+
+
 given_1 = 1
 given_2 = 2
 # ungiven = 4

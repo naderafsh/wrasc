@@ -95,9 +95,9 @@ class GpasciiClient(ClosingContextManager):
         while rcv_buffer.find("Input\n") == -1:
             buffer_temp = self.nb_read()
             rcv_buffer += buffer_temp
-            if time.time() - loop_time > 5: 
+            if time.time() - loop_time > 5:
                 raise TimeoutError(f"waiting for gpascii on ppmac at {self.host}")
-        self.d_print(f"received: \"{rcv_buffer}\"")
+        self.d_print(f'received: "{rcv_buffer}"')
 
         self.connected = True
         # TODO: check ppmac firmware version/CID
@@ -307,7 +307,7 @@ class GpasciiClient(ClosingContextManager):
             ack_n = self.rcv_buffer.count("\006")
             if timeout != 0:
                 if time.time() > timeout_time:
-                    return []
+                    return [], False, "timeout"
             if ack_n < 1:
                 time.sleep(0.0001)
 
