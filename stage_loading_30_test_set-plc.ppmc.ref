@@ -1,0 +1,66 @@
+- "// AS SmarGon setup for reliability / performance testing\n// to use test reference\
+  \ switches to capture and stop motors 3 and 4\n// plc 30 sets and plc 31 resets\
+  \ the test settings\n// Setup Gather\n// Set a counter for repeatition\nP8300 =\
+  \ 1\nopen plc 30\n// SET test mode\nif (Motor[3].ActPos-Motor[3].HomePos > 20 &&\
+  \ Gather.Enable > 1) {\n\t// pause (but not end) gather\n\tGather.Enable = 1\n}\n\
+  else if (Motor[3].ActPos-Motor[3].HomePos < 20 && Gather.Enable < 2) {\n\t// unpause\
+  \ (but not end) gather\n\tGather.Enable = 2\n}\n// motor 3\n// if already on the\
+  \ switch, then release the fault and set capture on\nif (Motor[3].DesVelZero &&\
+  \ (Motor[3].AuxFault > 0) && (Motor[3].pAuxFault > 0)) {\n\t// go to capture mode:\
+  \ sliding off the switch, no protection\n\t// setup capture on Aux flag fall\n\t\
+  Motor[3].pCaptFlag = Motor[3].pAuxFault\n\tMotor[3].CaptFlagBit = 8 + 0 //8 for\
+  \ bit 0\n   // Motor[3].pCaptPos=Acc24E3[0].Chan[2].HomeCapt.a\n\t// and reset the\
+  \ Aux protection off\n\tMotor[3].pAuxFault = 0\n\tMotor[3].AuxFaultBit = 0\n\tMotor[3].AuxFaultLevel\
+  \ = 0\n\t// do this, despite it's not working with IDE\n\tsend 1, \"entering capture\
+  \ mode, no protection\"\n\t//wait for some seconds to settle on the switch\n\tGather.Enable\
+  \ = 1\n\tL10 = Sys.Time + 3\n\tWHILE (L10 > Sys.Time){\n\t}\n\tGather.Enable = 2\n\
+  \t// now jog positive to the trigger\n\tjog 3 = 100^0\n\tMotor[3].CaptureMode =\
+  \ 1\n\tMotor[3].CapturePos = 1\t\n} \n// if just captured position, then stop gather\
+  \ and take note of captured position\nelse if (Motor[3].DesVelZero && (Motor[3].CapturePos\
+  \ == 0 && Motor[3].pCaptFlag != Acc24E3[0].Chan[2].Status.a)){\n\t// reset capture\
+  \ settings to normal\n\tMotor[3].CaptureMode = 0\n\tMotor[3].pCaptFlag = Acc24E3[0].Chan[2].Status.a\n\
+  \t// Motor[3].pCaptPos = Acc24E3[0].Chan[2].HomeCapt.a\n\tMotor[3].CaptFlagBit =\
+  \ 20\n}\n// if not on the switch, and already Captured postition then protect\n\
+  else if (Motor[3].DesVelZero && (Motor[3].pAuxFault == 0 && Motor[3].pCaptFlag ==\
+  \ Acc24E3[0].Chan[2].Status.a)) {\n\t// back to protection mode\n\tMotor[3].pAuxFault\
+  \ = Acc65E[0].DataReg[0].a\n\tMotor[3].AuxFaultBit = 8 + 0 // 8 for bit 0\n\tMotor[3].AuxFaultLevel\
+  \ = 0\n\tsend 1, \"protection mode\"\n\tjog 3 = 1000\n\t// Cycle is completed here\n\
+  \tP8300 = P8300 - 1\n}\n// if everything is ready again and axis is protected, then\
+  \ move towards the Aux limit\nelse if (Motor[3].DesVelZero && (Motor[3].pAuxFault\
+  \ == Acc65E[0].DataReg[0].a)){\n// Move to Aux switch\n\tsend 1, \"Moving to Aux\
+  \ switch\"\n\t// start (continue) gather, 3=infinite 2=finite\n\tjog 3 = -100\n\
+  }\nif (P8300 < 0) {\n\t// end Gather and disaple PLC\n\tGather.Enable = 0\n\tdisable\
+  \ plc 30\n}\nclose\np8300=5 enable plc 30"
+- "// AS SmarGon setup for reliability / performance testing\n// to use test reference\
+  \ switches to capture and stop motors 3 and 4\n// plc 30 sets and plc 31 resets\
+  \ the test settings\n// Setup Gather\n// Set a counter for repeatition\nP8300 =\
+  \ 1\nopen plc 30\n// SET test mode\nif (Motor[3].ActPos-Motor[3].HomePos > 20 &&\
+  \ Gather.Enable > 1) {\n\t// pause (but not end) gather\n\tGather.Enable = 1\n}\n\
+  else if (Motor[3].ActPos-Motor[3].HomePos < 20 && Gather.Enable < 2) {\n\t// unpause\
+  \ (but not end) gather\n\tGather.Enable = 2\n}\n// motor 3\n// if already on the\
+  \ switch, then release the fault and set capture on\nif (Motor[3].DesVelZero &&\
+  \ (Motor[3].AuxFault > 0) && (Motor[3].pAuxFault > 0)) {\n\t// go to capture mode:\
+  \ sliding off the switch, no protection\n\t// setup capture on Aux flag fall\n\t\
+  Motor[3].pCaptFlag = Motor[3].pAuxFault\n\tMotor[3].CaptFlagBit = 8 + 0 //8 for\
+  \ bit 0\n   // Motor[3].pCaptPos=Acc24E3[0].Chan[2].HomeCapt.a\n\t// and reset the\
+  \ Aux protection off\n\tMotor[3].pAuxFault = 0\n\tMotor[3].AuxFaultBit = 0\n\tMotor[3].AuxFaultLevel\
+  \ = 0\n\t// do this, despite it's not working with IDE\n\tsend 1, \"entering capture\
+  \ mode, no protection\"\n\t//wait for some seconds to settle on the switch\n\tGather.Enable\
+  \ = 1\n\tL10 = Sys.Time + 3\n\tWHILE (L10 > Sys.Time){\n\t}\n\tGather.Enable = 2\n\
+  \t// now jog positive to the trigger\n\tjog 3 = 100^0\n\tMotor[3].CaptureMode =\
+  \ 1\n\tMotor[3].CapturePos = 1\t\n} \n// if just captured position, then stop gather\
+  \ and take note of captured position\nelse if (Motor[3].DesVelZero && (Motor[3].CapturePos\
+  \ == 0 && Motor[3].pCaptFlag != Acc24E3[0].Chan[2].Status.a)){\n\t// reset capture\
+  \ settings to normal\n\tMotor[3].CaptureMode = 0\n\tMotor[3].pCaptFlag = Acc24E3[0].Chan[2].Status.a\n\
+  \t// Motor[3].pCaptPos = Acc24E3[0].Chan[2].HomeCapt.a\n\tMotor[3].CaptFlagBit =\
+  \ 20\n}\n// if not on the switch, and already Captured postition then protect\n\
+  else if (Motor[3].DesVelZero && (Motor[3].pAuxFault == 0 && Motor[3].pCaptFlag ==\
+  \ Acc24E3[0].Chan[2].Status.a)) {\n\t// back to protection mode\n\tMotor[3].pAuxFault\
+  \ = Acc65E[0].DataReg[0].a\n\tMotor[3].AuxFaultBit = 8 + 0 // 8 for bit 0\n\tMotor[3].AuxFaultLevel\
+  \ = 0\n\tsend 1, \"protection mode\"\n\tjog 3 = 1000\n\t// Cycle is completed here\n\
+  \tP8300 = P8300 - 1\n}\n// if everything is ready again and axis is protected, then\
+  \ move towards the Aux limit\nelse if (Motor[3].DesVelZero && (Motor[3].pAuxFault\
+  \ == Acc65E[0].DataReg[0].a)){\n// Move to Aux switch\n\tsend 1, \"Moving to Aux\
+  \ switch\"\n\t// start (continue) gather, 3=infinite 2=finite\n\tjog 3 = -100\n\
+  }\nif (P8300 < 0) {\n\t// end Gather and disaple PLC\n\tGather.Enable = 0\n\tdisable\
+  \ plc 30\n}\nclose\np8300=5 enable plc 30"

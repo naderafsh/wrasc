@@ -1,0 +1,94 @@
+- '// AS SmarGon setup for reliability / performance testing
+
+  // to use test reference switches to capture and stop motors 3 and 4
+
+  // plc 30 sets and plc 31 resets the test settings
+
+  open plc 31
+
+  // UN-SET to original mode
+
+  // motor 3
+
+  Motor[3].pAuxFault = 0
+
+  Motor[3].AuxFaultBit = 0
+
+  Motor[3].CaptureMode = 0
+
+  Motor[3].pCaptFlag = Acc24E3[0].Chan[2].Status.a
+
+  Motor[3].pCaptPos = Acc24E3[0].Chan[2].HomeCapt.a
+
+  Motor[3].CaptFlagBit = 20
+
+  Motor[3].CapturePos = 0
+
+  // motor 4
+
+  Motor[4].pAuxFault = 0
+
+  Motor[4].AuxFaultBit = 0
+
+  Motor[3].CaptureMode = 0
+
+  Motor[3].pCaptFlag = Acc24E3[0].Chan[2].Status.a
+
+  Motor[3].pCaptPos = Acc24E3[0].Chan[2].HomeCapt.a
+
+  Motor[3].CaptFlagBit = 20
+
+  Motor[3].CapturePos = 0
+
+  // ---
+
+  disable plc 31
+
+  close'
+- '// AS SmarGon setup for reliability / performance testing
+
+  // to use test reference switches to capture and stop motors 3 and 4
+
+  // plc 30 sets and plc 31 resets the test settings
+
+  open plc 31
+
+  // UN-SET to original mode
+
+  // motor 3
+
+  Motor[3].pAuxFault = 0
+
+  Motor[3].AuxFaultBit = 0
+
+  Motor[3].CaptureMode = 0
+
+  Motor[3].pCaptFlag = Acc24E3[0].Chan[2].Status.a
+
+  Motor[3].pCaptPos = Acc24E3[0].Chan[2].HomeCapt.a
+
+  Motor[3].CaptFlagBit = 20
+
+  Motor[3].CapturePos = 0
+
+  // motor 4
+
+  Motor[4].pAuxFault = 0
+
+  Motor[4].AuxFaultBit = 0
+
+  Motor[3].CaptureMode = 0
+
+  Motor[3].pCaptFlag = Acc24E3[0].Chan[2].Status.a
+
+  Motor[3].pCaptPos = Acc24E3[0].Chan[2].HomeCapt.a
+
+  Motor[3].CaptFlagBit = 20
+
+  Motor[3].CapturePos = 0
+
+  // ---
+
+  disable plc 31
+
+  close'

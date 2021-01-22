@@ -1,0 +1,16 @@
+- disable plc 10
+- ''
+- open plc 10
+- ''
+- if (Plc[3].Running==0)
+- ''
+- '{'
+- ''
+- '    cmd "&1p q81=d0 q82=d1 q83=d2 q84=d3 q85=d4 q86=d5 q87=d6 q88=d7 q89=d8"'
+- ''
+- '}'
+- ''
+- close
+- ''
+- enable plc 10
+- ''

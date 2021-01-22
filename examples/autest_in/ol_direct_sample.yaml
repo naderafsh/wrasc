@@ -1,0 +1,31 @@
+Mot_A:
+  HomeOffset_EGU: 0.1
+  HomeVel_EGU: 0.8
+  ID: CIL_M4
+  JogSpeed_EGU: 4
+  L1: 4
+  L2: 0
+  L3: 3
+  L4: 0
+  L5: 3
+  L6: 3
+  L7: 12
+  attackpos_egu: 2
+  bigjog_egu: 100
+  encoder_res: 5.0e-05
+  encoder_reversed: true
+  fullrange_egu: 150
+  fullsteps_per_rev: 200
+  jog_settle_time: 1
+  limit_settle_time: 2
+  micro_steps: 32
+  overall_egu_per_rev: 2
+  slideoff_steps: 400
+  smalljog_egu: 90
+baseconfig_fname: C:\Users\afsharn\gitdir\wrasc\examples\data\ppmac_base_config.cfg
+clearance_egu: 10
+loop_repeats: 20
+ppglobal_fname: C:\Users\afsharn\gitdir\psych\outdir\NA_brake_test\Database\pp_global.sym
+ppmac_hostname: 10.23.92.220
+ppmac_is_backward: false
+wrasc_cycle_period: 0.25
