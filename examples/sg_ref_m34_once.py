@@ -6,11 +6,13 @@ from examples.motion_tests_ra import SmarGonTestAgents
 
 # this is used for yaml loading
 import utils
+from os import path
 
 
 # load test settings from yaml file
-tst = utils.undump_obj("sg_ref_m34_once", "autest_in")
-
+tst = utils.undump_obj(
+    "sg_ref_m34_once", path.join(path.dirname(path.abspath(__file__)), "autest_in")
+)
 # setup the collection of test agents (tasks) in the specific class
 sg_test = SmarGonTestAgents(_VERBOSE_=tst["verbose_level"], tst=tst, out_path="sg_out")
 
