@@ -2,7 +2,7 @@
 from wrasc import ppmac_ra as ppra
 
 # take the specific collection of agents/tasks in the specific test class
-from examples.motion_tests_ra import SmarGonTestAgents
+from examples.motion_tests_ra import SgRefM34Agents
 
 # this is used for yaml loading
 import utils
@@ -14,7 +14,7 @@ tst = utils.undump_obj(
     "sg_ref_m34_once", path.join(path.dirname(path.abspath(__file__)), "autest_in")
 )
 # setup the collection of test agents (tasks) in the specific class
-sg_test = SmarGonTestAgents(_VERBOSE_=tst["verbose_level"], tst=tst, out_path="sg_out")
+sg_test = SgRefM34Agents(_VERBOSE_=tst["verbose_level"], tst=tst, out_path="sg_out")
 
 # process and compile agents dependencies
 agents = ppra.ra.compile_n_install({}, globals().copy(), "ARBITRARY")

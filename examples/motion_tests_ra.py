@@ -751,7 +751,54 @@ class OL_Rdb_Lim2Lim(ra.Device):
         return jog_agent
 
 
-class SmarGonTestAgents(ra.Device):
+class SgPhiM5Agents(ra.Device):
+    def __init__(self, tst=None, out_path="sg_out", _VERBOSE_=1, **kwargs):
+        self.dmDeviceType = "OLRDBCapt"
+        self.smargon_ppmac = ppra.PPMAC(tst["ppmac_hostname"], backward=True)
+
+        default_pass_logs = [
+            # readback capture via companion axis
+            "Motor[5].CapturedPos",
+            # readback and step position at stop position
+            "#5p",
+            # test condition parameter
+            "Motor[5].JogSpeed",
+            # position references
+            "Motor[5].HomePos",
+            # Check these for errors
+            "Motor[5].TriggerNotFound",
+            "Gate3[1].Chan[0].CountError",
+            "Motor[5].DacLimit",
+        ]
+
+        self.out_path = out_path
+
+        self.prog10_code = r"OPEN PROG 10\nLINEAR\nABS\nTM(Q70)\nA(Q71)B(Q72)C(Q73)X(Q77)Y(Q78)Z(Q79)\nDWELL0\nCLOSE".splitlines()
+        self.plc10_code = 'disable plc 10\nopen plc 10\nif (Plc[3].Running==0)\n{\n    cmd "&1p q81=d0 q82=d1 q83=d2 q84=d3 q85=d4 q86=d5 q87=d6 q88=d7 q89=d8"\n}\nclose\nenable plc 10'.splitlines()
+        self.limit_cond = "Motor[6].pLimits=0".splitlines()
+
+        super().__init__(**kwargs)
+
+        self.jog_90_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Phi"],
+            #
+            pass_conds=["Motor[L1].InPos==1",],
+            # this forces the agent to do the jog before testing InPos
+            cry_pretries=1,
+            cry_cmds=["#{L1}jog:90"],
+            #
+            pass_logs=default_pass_logs,
+            csv_file_path=path.join(self.out_path, "phi_jog_90_ag.csv"),
+            #
+            celeb_cmds=["#{L1}j/"],
+            wait_after_celeb=tst["Mot_Phi"]["jog_settle_time"],
+        )
+
+
+class SgRefM34Agents(ra.Device):
     def __init__(self, tst=None, out_path="sg_out", _VERBOSE_=1, **kwargs):
         self.dmDeviceType = "OLRDBCapt"
         self.smargon_ppmac = ppra.PPMAC(tst["ppmac_hostname"], backward=True)
@@ -817,39 +864,6 @@ class SmarGonTestAgents(ra.Device):
             **tst["Mot_Outer"],
             pass_conds="Motor[L1].PlusLimit==1",
         )
-
-        # self.set_initial_setup_ag = ppra.WrascPmacGate(
-        #     owner=self,
-        #     verbose=_VERBOSE_,
-        #     ppmac=self.smargon_ppmac,
-        #     cry_cmds=self.limit_cond,
-        #     celeb_cmds=self.prog10_code + self.plc10_code,
-        # )
-
-        # -------------------------------------------------------------------
-        # Jog outer motor
-        # -------- motorB
-        # self.jog_outer_ag = ppra.WrascPmacGate(
-        #     owner=self,
-        #     verbose=_VERBOSE_,
-        #     ppmac=self.smargon_ppmac,
-        #     **tst["Mot_Outer"],
-        #     wait_after_celeb=tst["Mot_Outer"]["jog_settle_time"],
-        #     #
-        #     pass_logs=default_pass_logs,
-        #     csv_file_path=path.join(self.out_path, "jog_outer_ag.csv"),
-        # )
-
-        # self.jog_inner_ag = ppra.WrascPmacGate(
-        #     owner=self,
-        #     verbose=_VERBOSE_,
-        #     ppmac=self.smargon_ppmac,
-        #     **tst["Mot_Inner"],
-        #     wait_after_celeb=tst["Mot_Inner"]["jog_settle_time"],
-        #     #
-        #     pass_logs=default_pass_logs,
-        #     csv_file_path=path.join(self.out_path, "jog_inner_ag.csv"),
-        # )
 
         # if not on the switch, and already Captured postition then protect
         # 0 - check configuration

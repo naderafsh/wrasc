@@ -396,6 +396,13 @@ def ppwr_poll_in(ag_self: ra.Agent):
     # sending all stats at once
     # and then processing the conditions one by one ... ?
 
+    # TODO: add the capability of cry_before_check
+    # to action cry_act, for pre_acts times before checking the conditions
+    # conds shall return False before pre_tries are exhausted
+
+    if ag_self.cry_tries < ag_self.cry_pretries:
+        return False, "pre-tries not exhasuted, skiped checking conds."
+
     ag_self.receive_cond_parsed(ag_self.pass_conds_parsed)
 
     return ag_self.check_pass_conds()
@@ -659,7 +666,7 @@ class WrascPmacGate(ra.Agent):
     celeb_cmds = ...  # type : list
     celeb_cmd_parsed = ...  # type : str
 
-    pass_cond = ...  # type : list
+    pass_conds = ...  # type : list
     pass_conds_parsed = ...  # type : list
 
     pass_logs = ...  # type : list
@@ -674,6 +681,7 @@ class WrascPmacGate(ra.Agent):
         pass_conds=[],
         cry_cmds=[],
         cry_retries=1,
+        cry_pretries=0,
         celeb_cmds=[],
         pass_logs=[],
         csv_file_path=None,
@@ -693,6 +701,7 @@ class WrascPmacGate(ra.Agent):
         self.cry_cmds = []
         self.cry_retries = 1
         self.cry_tries = 0
+        self.cry_pretries = 0
         self.celeb_cmds = []
         self.pass_logs = []
 
@@ -709,6 +718,7 @@ class WrascPmacGate(ra.Agent):
             pass_conds=pass_conds,
             cry_cmds=cry_cmds,
             cry_retries=cry_retries,
+            cry_pretries=cry_pretries,
             celeb_cmds=celeb_cmds,
             pass_logs=pass_logs,
             csv_file_path=csv_file_path,
@@ -742,6 +752,7 @@ class WrascPmacGate(ra.Agent):
         pass_conds=None,
         cry_cmds=None,
         cry_retries=None,
+        cry_pretries=None,
         celeb_cmds=None,
         pass_logs=None,
         csv_file_path=None,
@@ -788,6 +799,9 @@ class WrascPmacGate(ra.Agent):
 
         if cry_retries:
             self.cry_retries = cry_retries
+
+        if cry_pretries:
+            self.cry_pretries = cry_pretries
 
         if (not pass_conds) and (cry_cmds):
             # an empty pass-cond (but not a None) means: check for all of the command statements:
