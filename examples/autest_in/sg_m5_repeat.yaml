@@ -1,5 +1,5 @@
 Mot_Phi:
-  ID: SGON_M5
+  ID: SGON_PHI_M5
   L1: 5
   L2: 1
   L3: 0
@@ -10,17 +10,17 @@ Mot_Phi:
   
   EGU: mdeg
   HomeVel: 1
-  JogSpeed: 5  
+  # JogSpeed: 10000
+  jog_size_mu: 10000
   # slideoff_egu: 1000
   limit_settle_time: 2
-  jog_settle_time: 1
-
-
-clearance_egu: 10
+  jog_settle_time: 2
+  
+# clearance_egu: 10
 
 verbose_level: 1
-loop_repeats: 5
+loop_repeats: 4
 ppmac_hostname: 10.109.25.22
 ppmac_is_backward: true
 # wrasc main cycle period
-wrasc_cycle_period: 0.25
+wrasc_cycle_period: 1 # sec

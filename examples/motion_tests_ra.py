@@ -761,19 +761,24 @@ class SgPhiM5Agents(ra.Device):
             "Motor[5].CapturedPos",
             # readback and step position at stop position
             "#5p",
-            # test condition parameter
-            "Motor[5].JogSpeed",
+            # log following error and actual velocity
+            "#5v",
+            "#5f",
+            # "#5g",
+            # "#5d",
+            # "#5t",
             # position references
             "Motor[5].HomePos",
-            # Check these for errors
-            "Motor[5].TriggerNotFound",
+            # log these errors
             "Gate3[1].Chan[0].CountError",
             "Motor[5].DacLimit",
+            "Motor[5].Status[0]",
+            "Motor[5].Status[1]",
         ]
 
         self.out_path = out_path
 
-        self.prog10_code = r"OPEN PROG 10\nLINEAR\nABS\nTM(Q70)\nA(Q71)B(Q72)C(Q73)X(Q77)Y(Q78)Z(Q79)\nDWELL0\nCLOSE".splitlines()
+        self.prog10_code = "OPEN PROG 10\nLINEAR\nABS\nTM(Q70)\nA(Q71)B(Q72)C(Q73)X(Q77)Y(Q78)Z(Q79)\nDWELL0\nCLOSE".splitlines()
         self.plc10_code = 'disable plc 10\nopen plc 10\nif (Plc[3].Running==0)\n{\n    cmd "&1p q81=d0 q82=d1 q83=d2 q84=d3 q85=d4 q86=d5 q87=d6 q88=d7 q89=d8"\n}\nclose\nenable plc 10'.splitlines()
         self.limit_cond = "Motor[6].pLimits=0".splitlines()
 
@@ -785,16 +790,31 @@ class SgPhiM5Agents(ra.Device):
             ppmac=self.smargon_ppmac,
             **tst["Mot_Phi"],
             #
-            pass_conds=["Motor[L1].InPos==1",],
-            # this forces the agent to do the jog before testing InPos
+            pass_conds=["Motor[L1].InPos==1"],
+            # this forces the agent to do the jog once, before testing conditions
             cry_pretries=1,
-            cry_cmds=["#{L1}jog:90"],
+            cry_cmds=["#{L1}jog:{jog_size_mu}"],
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join(self.out_path, "phi_jog_90_ag.csv"),
-            #
-            celeb_cmds=["#{L1}j/"],
+            csv_file_path=path.join(self.out_path, "phi_jog_ag.csv"),
+            # effectively do nothing
+            celeb_cmds=["#{L1}p"],
             wait_after_celeb=tst["Mot_Phi"]["jog_settle_time"],
+        )
+
+        self.set_initial_setup_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            pass_conds=[],  # pass anyways
+            celeb_cmds=self.prog10_code + self.plc10_code,
+        )
+
+        self.set_wpKey_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            cry_cmds=["sys.WpKey=$AAAAAAAA"],
         )
 
 

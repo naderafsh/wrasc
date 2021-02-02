@@ -22,16 +22,4 @@ agents = ppra.ra.compile_n_install({}, globals().copy(), "ARBITRARY")
 
 ppra.do_ags(sg_test.set_initial_setup_ag)
 
-iters = 0
-while iters < tst["loop_repeats"]:
-    print(f"\niteration: {iters} ")
-
-    # set aux fault protection for inner and outer axes.
-    # This prevents m3 and m4 from finding mlim
-
-    ppra.do_ags([sg_test.jog_90_ag], cycle_period=tst["wrasc_cycle_period"])
-
-    iters += 1
-
-
 print("\nSequence is finished.")
