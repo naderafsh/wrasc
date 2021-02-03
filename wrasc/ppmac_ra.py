@@ -413,6 +413,13 @@ def ppwr_act_on_valid(ag_self: ra.Agent):
     user action can be injected here 
     """
 
+    if ag_self.log_while_waiting and ag_self.pass_logs_parsed:
+        ag_self.acquire_log()
+        try:
+            ag_self.log_to_file()
+        except:
+            raise RuntimeError(f"{ag_self.name}: writing log to file")
+
     assert isinstance(ag_self, WrascPmacGate)
     ag_self: WrascPmacGate
 
@@ -448,9 +455,7 @@ def ppwr_act_on_armed(ag_self: ra.Agent):
         try:
             ag_self.log_to_file()
         except:
-            raise RuntimeError(
-                f"{ag_self.name}: writing log {ag_self.csvcontent} to file "
-            )
+            raise RuntimeError(f"{ag_self.name}: writing log to file")
 
     return ra.StateLogics.Done, "Done, act on hold."
 
@@ -695,6 +700,7 @@ class WrascPmacGate(ra.Agent):
         celeb_cmds=[],
         pass_logs=[],
         csv_file_path=None,
+        log_while_waiting=False,
         ongoing=False,
         wait_after_celeb=None,
         **kwargs,
@@ -717,6 +723,7 @@ class WrascPmacGate(ra.Agent):
 
         self.pass_logs_parsed = []
         self.csv_file_name = None
+        self.log_while_waiting = False
         # if you are here, then we have an agent to intialise
 
         super().__init__(
@@ -732,6 +739,7 @@ class WrascPmacGate(ra.Agent):
             celeb_cmds=celeb_cmds,
             pass_logs=pass_logs,
             csv_file_path=csv_file_path,
+            log_while_waiting=log_while_waiting,
             ongoing=ongoing,
             wait_after_celeb=wait_after_celeb,
             **kwargs,
@@ -766,6 +774,7 @@ class WrascPmacGate(ra.Agent):
         celeb_cmds=None,
         pass_logs=None,
         csv_file_path=None,
+        log_while_waiting=None,
         ongoing=None,
         wait_after_celeb=None,
         **kwargs,
@@ -869,6 +878,9 @@ class WrascPmacGate(ra.Agent):
             else:
                 # self.log_vals = []
                 self.csvcontent = None
+
+        if log_while_waiting:
+            self.log_while_waiting = log_while_waiting
 
         # TODO change this crap[ solution
         # floating digits used for == comparison
@@ -1125,16 +1137,12 @@ class WrascPmacGate(ra.Agent):
     def log_to_file(self):
         # now log a line to cvs if there is one
 
-        # if "5e" in self.csvcontent:
-        #     print(self.csvcontent)
-
         if self.csvcontent and self.csv_file_stamped:
 
-            with open(self.csv_file_stamped, "w+") as file:
+            with open(self.csv_file_stamped, "a+") as file:
                 file.write(self.csvcontent)
-                file.close
 
-            self.cvscontent = None
+            self.csvcontent = ""
 
     def celeb_act(self):
 

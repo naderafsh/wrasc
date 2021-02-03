@@ -11,7 +11,7 @@ Mot_Phi:
   EGU: mdeg
   HomeVel: 1
   # JogSpeed: 10000
-  jog_size_mu: 10000
+  jog_size_mu: 45000
   # slideoff_egu: 1000
   limit_settle_time: 2
   jog_settle_time: 2
@@ -19,8 +19,8 @@ Mot_Phi:
 # clearance_egu: 10
 
 verbose_level: 1
-loop_repeats: 4
+loop_repeats: 2
 ppmac_hostname: 10.109.25.22
 ppmac_is_backward: true
 # wrasc main cycle period
-wrasc_cycle_period: 1 # sec
+wrasc_cycle_period: 0.25 # sec

@@ -26,10 +26,7 @@ iters = 0
 while iters < tst["loop_repeats"]:
     print(f"\niteration: {iters} ")
 
-    # set aux fault protection for inner and outer axes.
-    # This prevents m3 and m4 from finding mlim
-
-    ppra.do_ags([sg_test.jog_90_ag], cycle_period=tst["wrasc_cycle_period"])
+    ppra.do_ags([sg_test.jog_rel_ag], cycle_period=tst["wrasc_cycle_period"])
 
     iters += 1
 

@@ -757,8 +757,6 @@ class SgPhiM5Agents(ra.Device):
         self.smargon_ppmac = ppra.PPMAC(tst["ppmac_hostname"], backward=True)
 
         default_pass_logs = [
-            # readback capture via companion axis
-            "Motor[5].CapturedPos",
             # readback and step position at stop position
             "#5p",
             # log following error and actual velocity
@@ -772,6 +770,7 @@ class SgPhiM5Agents(ra.Device):
             # log these errors
             "Gate3[1].Chan[0].CountError",
             "Motor[5].DacLimit",
+            "Motor[5].ServoOut",
             "Motor[5].Status[0]",
             "Motor[5].Status[1]",
         ]
@@ -784,19 +783,20 @@ class SgPhiM5Agents(ra.Device):
 
         super().__init__(**kwargs)
 
-        self.jog_90_ag = ppra.WrascPmacGate(
+        self.jog_rel_ag = ppra.WrascPmacGate(
             owner=self,
             verbose=_VERBOSE_,
             ppmac=self.smargon_ppmac,
             **tst["Mot_Phi"],
             #
-            pass_conds=["Motor[L1].InPos==1"],
+            pass_conds=["Motor[L1].DesVelZero==1"],
             # this forces the agent to do the jog once, before testing conditions
             cry_pretries=1,
             cry_cmds=["#{L1}jog:{jog_size_mu}"],
             #
             pass_logs=default_pass_logs,
             csv_file_path=path.join(self.out_path, "phi_jog_ag.csv"),
+            log_while_waiting=True,
             # effectively do nothing
             celeb_cmds=["#{L1}p"],
             wait_after_celeb=tst["Mot_Phi"]["jog_settle_time"],
