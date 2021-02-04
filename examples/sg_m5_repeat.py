@@ -8,6 +8,7 @@ from examples.motion_tests_ra import SgPhiM5Agents
 import utils
 from os import path
 
+separation_line = "\n***********************\n\n"
 
 # load test settings from yaml file
 tst = utils.undump_obj(
@@ -20,15 +21,30 @@ sg_test = SgPhiM5Agents(_VERBOSE_=tst["verbose_level"], tst=tst, out_path=outpat
 # process and compile agents dependencies
 agents = ppra.ra.compile_n_install({}, globals().copy(), "ARBITRARY")
 
-ppra.do_ags(sg_test.set_initial_setup_ag)
+print(separation_line, "Starting the sequence...")
 
 iters = 0
 while iters < tst["loop_repeats"]:
     print(f"\niteration: {iters} ")
 
-    ppra.do_ags([sg_test.jog_rel_ag], cycle_period=tst["wrasc_cycle_period"])
+    # TODO see why this doesn't work!!!!
+    sg_test.jog_rel_ag.setup(cry_cmds=["#{L1}jog:{jog_size_mu}"])
+
+    ppra.do_ags(
+        [sg_test.jog_rel_ag, sg_test.until_not_moving_ag],
+        all_done=False,
+        cycle_period=tst["wrasc_cycle_period"],
+    )
+
+    # if jog is not successful (InPos) then terminate
+    if not sg_test.jog_rel_ag.is_done:
+        print(
+            f"\n\nExiting due to unsuccessful jog at iteration {iters}",
+            end=separation_line,
+        )
+        exit(1)
 
     iters += 1
 
 
-print("\nSequence is finished.")
+print("\n\nSequence is finished successfully.", end=separation_line)

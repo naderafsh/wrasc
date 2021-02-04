@@ -822,7 +822,12 @@ class WrascPmacGate(ra.Agent):
         if cry_pretries:
             self.cry_pretries = cry_pretries
 
-        if (not pass_conds) and (cry_cmds):
+        # TODO fix: this makes an arbitrary pass_cond when cry_cmds are changed
+        # via setup, i.e. no NEW pass_conds are supplied.
+        # dirty fix is to check if there are only pass_conds parsed, then
+        # don't change them.
+
+        if (not self.pass_conds) and (not pass_conds) and (cry_cmds):
             # an empty pass-cond (but not a None) means: check for all of the command statements:
             pass_conds = stats_to_conds(cry_cmds)
 

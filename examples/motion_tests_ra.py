@@ -766,13 +766,13 @@ class SgPhiM5Agents(ra.Device):
             # "#5d",
             # "#5t",
             # position references
-            "Motor[5].HomePos",
+            # "Motor[5].HomePos",
             # log these errors
             "Gate3[1].Chan[0].CountError",
-            "Motor[5].DacLimit",
+            # "Motor[5].DacLimit",
             "Motor[5].ServoOut",
             "Motor[5].Status[0]",
-            "Motor[5].Status[1]",
+            # "Motor[5].Status[1]",
         ]
 
         self.out_path = out_path
@@ -789,7 +789,7 @@ class SgPhiM5Agents(ra.Device):
             ppmac=self.smargon_ppmac,
             **tst["Mot_Phi"],
             #
-            pass_conds=["Motor[L1].DesVelZero==1"],
+            pass_conds=["Motor[L1].InPos==1"],
             # this forces the agent to do the jog once, before testing conditions
             cry_pretries=1,
             cry_cmds=["#{L1}jog:{jog_size_mu}"],
@@ -800,6 +800,21 @@ class SgPhiM5Agents(ra.Device):
             # effectively do nothing
             celeb_cmds=["#{L1}p"],
             wait_after_celeb=tst["Mot_Phi"]["jog_settle_time"],
+        )
+
+        self.until_not_moving_ag = ppra.WrascPmacGate(
+            owner=self,
+            verbose=_VERBOSE_,
+            ppmac=self.smargon_ppmac,
+            **tst["Mot_Phi"],
+            #
+            pass_conds=["Motor[L1].DesVelZero==1"],
+            cry_pretries=1,
+            cry_cmds=["#{L1}p"],
+            celeb_cmds=["#{L1}p"],
+            # wait a few seconds more than jog agent, to give the jog agent enough time
+            # to get the InPos and get done.
+            wait_after_celeb=self.jog_rel_ag.wait_after_celeb + 2,
         )
 
         self.set_initial_setup_ag = ppra.WrascPmacGate(
