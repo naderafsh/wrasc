@@ -1424,10 +1424,9 @@ def do_ags(ag_list, cycle_period=0.25, all_done=True, verbose=None):
         lead_time = next_infer_time - timer()
         if lead_time > 0:
             time.sleep(lead_time)
-            print("i", end="")
+            print(".", end="")
         else:
-            pass
-            print("I", end="")
+            print("i", end="")
 
         for ag_self in ag_list:
             ag_self: WrascPmacGate
@@ -1443,9 +1442,9 @@ def do_ags(ag_list, cycle_period=0.25, all_done=True, verbose=None):
         lead_time = next_act_time - timer()
         if lead_time > 0:
             time.sleep(lead_time)
-            print("o", end="")
+            print(".", end="")
         else:
-            print("O", end="")
+            print("o", end="")
 
         for ag_self in ag_list:
             ag_self: WrascPmacGate

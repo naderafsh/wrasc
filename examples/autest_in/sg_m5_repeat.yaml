@@ -19,7 +19,8 @@ Mot_Phi:
 # clearance_egu: 10
 
 verbose_level: 1
-loop_repeats: 2
+# loop_repeats: 2
+num_steps: 2 # num_steps forwards, then the same steps backwards
 ppmac_hostname: 10.109.25.22
 ppmac_is_backward: true
 # wrasc main cycle period
