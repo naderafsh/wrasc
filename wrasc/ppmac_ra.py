@@ -170,12 +170,18 @@ def parse_vars(stat: str):
     # find exponential notations and convert them.
     # ppmac doesn't understand 5e-3
     # only if it is not a quoteed string which may contain Acc24E3 !!!
-    # DONE fix the hack
+
+    # TODO fix the hack
+    stat = stat.replace("Acc24E", "Acc24_E_")
+    stat = stat.replace("Acc65E", "Acc65_E_")
 
     exp_nums = re.findall(regex_anynum, stat)
     for v in exp_nums:
         if "e" in v.lower():
             stat = stat.replace(v, f"{float(v):.8f}")
+
+    stat = stat.replace("Acc65_E_", "Acc65E")
+    stat = stat.replace("Acc24_E_", "Acc24E")
 
     # split the statement
     for v in re.split(r"[\+\-\*\/=><! \(\)]", stat):
@@ -362,7 +368,7 @@ def expand_pmac_stats(stats, **vars):
             # this is probably more serious...
             stats_out.append(stat)
             # TODO this is a hack: PLC code actually can contain {} so...!!!
-            print(f"ValueError in parameters; ignored!:\n{stat_org}")
+            # print(f"ValueError possible invalid phrase in parameters:\n{stat_org}\n")
         except IndexError:
             # this is probably a syntax issue,
             # e.g. something other than a variable is passed as a macro
@@ -370,7 +376,7 @@ def expand_pmac_stats(stats, **vars):
             # raise RuntimeError(f"syntax error in ppmac statement: {stat} ")
 
             stats_out.append(stat)
-            raise IndexError(f"IndexError in parameters; ignored!:\n{stat_org}")
+            raise IndexError(f"syntax error in parameters:\n{stat_org}")
 
     return stats_out
 

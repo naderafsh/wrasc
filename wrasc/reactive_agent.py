@@ -538,13 +538,13 @@ class Agent(object):
     dmAgentType = "uninitialised"
     owner = Device()
 
-    poll_pr = ...  # type: Method
-    poll_in = ...  # type: Method
-    act_on_invalid = ...  # type: Method
-    act_on_valid = ...  # type: Method
-    act_on_armed = ...  # type: Method
+    poll_pr = ...  # type: function
+    poll_in = ...  # type: function
+    act_on_invalid = ...  # type: function
+    act_on_valid = ...  # type: function
+    act_on_armed = ...  # type: function
 
-    act_on = ...  # type: Method
+    act_on = ...  # type: function
 
     poll = ...  # type: MyObservable
     act = ...  # type: MyObservable
@@ -1200,7 +1200,7 @@ def compile_dependencies(_agents_list, script_globals):
     os.makedirs(excel_out_path, exist_ok=True)
     f = open(os.path.join(excel_out_path, excel_out_file_name), "w+")
     for _this_ag in _agents_list:
-        _this_ag_obj = _this_ag[1]  # type: assert isinstance(Agent, object)
+        _this_ag_obj = _this_ag[1]  # type: Agent
         _this_ag_fullname = _this_ag_obj.name
 
         print(_this_ag_fullname, end="\n")
@@ -1287,6 +1287,15 @@ def compile_dependencies(_agents_list, script_globals):
 
 
 def compile_n_install(initial_dict_of_agents, script_globals, eprefix=None):
+
+    # TODO redirect stdout to file, as a quick hack to silent the compiler
+    print("compiling and installing agents started ...")
+    log = open(
+        os.path.join(os.path.dirname(dmodel_log_filename), "dmodel_compiler.dump"),
+        "w+",
+    )
+    sys.stdout = log
+
     # -- FIND agents
 
     print("Compiling: looking for agents in supplied framework...")
@@ -1402,6 +1411,7 @@ def compile_n_install(initial_dict_of_agents, script_globals, eprefix=None):
     n = len(initial_dict_of_agents)
 
     if n != len(agents_list):
+
         print(
             myEsc.ERROR,
             "WRONG number of agents {} vs {}".format(n, len(agents_list)),
@@ -1427,6 +1437,12 @@ def compile_n_install(initial_dict_of_agents, script_globals, eprefix=None):
     print("Agents listed by layer:")
     for _ag in agents_sorted_by_layer:
         print("layer {} - {}".format(agents_sorted_by_layer[_ag]["layer"], _ag))
+
+    # TODO reset stdout to file, as a quick hack to silent the compiler
+    sys.stdout = sys.__stdout__
+    log.close
+
+    print("compiling and installing agents done.")
 
     return agents_sorted_by_layer
 
