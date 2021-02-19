@@ -1035,6 +1035,7 @@ class SgRefM34Agents(ra.Device):
                 "Motor[L1].pAuxFault = 0",
                 "Motor[L1].AuxFaultBit = 0",
                 "Motor[L1].AuxFaultLevel = 0",
+                "Motor[L1].CaptureMode = 1",
             ],
         )
 

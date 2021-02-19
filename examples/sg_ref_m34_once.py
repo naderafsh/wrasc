@@ -20,6 +20,10 @@ sg_test = SgRefM34Agents(_VERBOSE_=tst["verbose_level"], tst=tst, out_path=outpa
 # process and compile agents dependencies
 agents = ppra.ra.compile_n_install({}, globals().copy(), "ARBITRARY")
 
+# reset capture settings: This resets encoder offset to zero in case og CaptureMode=0
+# undesireable, so CaptureMode is set to 1 for both M3 and M4
+ppra.do_ags([sg_test.reset_capture_inner_ag, sg_test.reset_capture_outer_ag])
+
 iters = 0
 while iters < tst["loop_repeats"]:
     print(f"\niteration: {iters} ")
