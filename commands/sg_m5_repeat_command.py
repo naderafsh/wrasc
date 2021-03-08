@@ -69,10 +69,10 @@ def main():
 
     # Optional options
     parser.add_argument('-time', '--total_time', type=int,
-                        help='Provide time in hours to run the process',
+                        help='Provide time in hours to run the process. Default to 12hours.',
                         default='12')
     parser.add_argument('-sleep', '--sleep', type=int,
-                        help='Provide time in hours to wait the process',
+                        help='Provide time in hours to wait the process. Default to 1hour.',
                         default='1')
 
     try:
