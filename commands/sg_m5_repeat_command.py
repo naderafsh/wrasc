@@ -12,6 +12,8 @@ import json
 
 def convert_to_hrs(input_time):
     """Convert input which is less than 1hour into hours.
+    Say we got 0.25 hours as input, first convert into a
+    whole number, then divide by 60 to get into hours.
 
     Args:
         input_time (float): Input time
@@ -33,7 +35,10 @@ def run(data):
     Returns:
         None: It doesn't return anything.
     """
-    total_time, sleep_time = data.total_time, data.sleep
+    total_time, sleep_time = (
+        convert_to_hrs(data.total_time),
+        convert_to_hrs(data.sleep)
+    )
     current_datetime = datetime.now()
     total_run_time = current_datetime + timedelta(hours=total_time)
     sg_m5_repeat_path = Path.cwd().joinpath('examples', 'sg_m5_repeat.py')
