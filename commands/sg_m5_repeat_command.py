@@ -10,18 +10,35 @@ import subprocess
 import json
 
 
+def convert_to_hrs(input_time):
+    """Convert input which is less than 1hour into hours.
+    Say we got 0.25 hours as input, first convert into a
+    whole number, then divide by 60 to get into hours.
+
+    Args:
+        input_time (float): Input time
+
+    Returns:
+        float: converted time in hours
+    """
+    return ((input_time * 100) / 60) if input_time < 1 else input_time
+
+
 def run(data):
     """Repeat the following process for given interval:
     1. Run a python file.
     2. Go to sleep
 
     Args:
-        data ([type]): Commandline arguments.
+        data (Namespace): Commandline arguments.
 
     Returns:
         None: It doesn't return anything.
     """
-    total_time, sleep_time = data.total_time, data.sleep
+    total_time, sleep_time = (
+        convert_to_hrs(data.total_time),
+        convert_to_hrs(data.sleep)
+    )
     current_datetime = datetime.now()
     total_run_time = current_datetime + timedelta(hours=total_time)
     sg_m5_repeat_path = Path.cwd().joinpath('examples', 'sg_m5_repeat.py')
@@ -87,7 +104,7 @@ def run(data):
         # Logging end of subprocess.
         end_run = ctime(time())
         print(
-            f'run_id: {i}\n'
+            f'Run id: {i}\n'
             f'Subprocess ended at {end_run}\n'
             '===================================='
         )
@@ -110,10 +127,10 @@ def main():
                 """)
 
     # Optional options
-    parser.add_argument('-time', '--total_time', type=int,
+    parser.add_argument('-time', '--total_time', type=float,
                         help='Provide time in hours to run the process. Default to 12hours.',
                         default='12')
-    parser.add_argument('-sleep', '--sleep', type=int,
+    parser.add_argument('-sleep', '--sleep', type=float,
                         help='Provide time in hours to wait the process. Default to 1hour.',
                         default='1')
 
