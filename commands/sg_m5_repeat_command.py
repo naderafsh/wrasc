@@ -10,13 +10,25 @@ import subprocess
 import json
 
 
+def convert_to_hrs(input_time):
+    """Convert input which is less than 1hour into hours.
+
+    Args:
+        input_time (float): Input time
+
+    Returns:
+        float: converted time in hours
+    """
+    return ((input_time * 100) / 60) if input_time < 1 else input_time
+
+
 def run(data):
     """Repeat the following process for given interval:
     1. Run a python file.
     2. Go to sleep
 
     Args:
-        data ([type]): Commandline arguments.
+        data (Namespace): Commandline arguments.
 
     Returns:
         None: It doesn't return anything.
