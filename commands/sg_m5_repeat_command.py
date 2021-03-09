@@ -3,10 +3,11 @@
 
 import argparse
 from datetime import datetime, timedelta
-import time
+from time import time, sleep, ctime
 import logging
 from pathlib import Path
 import subprocess
+import json
 
 
 def run(data):
@@ -21,8 +22,8 @@ def run(data):
         None: It doesn't return anything.
     """
     total_time, sleep_time = data.total_time, data.sleep
-    current_time = datetime.now()
-    total_run_time = current_time + timedelta(hours=total_time)
+    current_datetime = datetime.now()
+    total_run_time = current_datetime + timedelta(hours=total_time)
     sg_m5_repeat_path = Path.cwd().joinpath('examples', 'sg_m5_repeat.py')
 
     # Prepare filepath to store logs
@@ -37,18 +38,43 @@ def run(data):
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        filename=f'{logs_file_path.as_posix()}/{current_time.strftime("%Y%m%d-%H%M%S")}.log'
+        filename=f'{logs_file_path.as_posix()}/{current_datetime.strftime("%Y%m%d-%H%M%S")}.log'
     )
 
-    while current_time <= total_run_time:
+    print(
+        f'This process is initiated at {ctime(time())}\n'
+    )
+
+    logging.info(
+        f'This process is initiated at {ctime(time())}'
+    )
+
+    # Count to log how many times a full run executed.
+    i = 1
+    while current_datetime <= total_run_time:
         '''
         Subprocess run will return a returncode.
         0 - Successfully ran the subprocess
         1 - Failed subprocess
         '''
+        start_run = ctime(time())
+
+        # Logging start of subprocess.
+        print(
+            '======================================\n'
+            f'Run id: {i}\n'
+            f'Subprocess started at {start_run}\n'
+        )
+
+        logging.info(json.dumps({
+            'run_id': i,
+            'message': f'Subprocess started at {start_run}'
+        }))
+
         process = subprocess.run(
             ['python', sg_m5_repeat_path.as_posix()],
-            capture_output=True
+            capture_output=True,
+            shell=True
         )
 
         # Check whether the subprocess status
@@ -58,8 +84,24 @@ def run(data):
             logging.error(process_error)
             break
 
+        # Logging end of subprocess.
+        end_run = ctime(time())
+        print(
+            f'run_id: {i}\n'
+            f'Subprocess ended at {end_run}\n'
+            '===================================='
+        )
+
+        logging.info(json.dumps({
+            'run_id': i,
+            'message': f'Subprocess ended at {end_run}'
+        }))
+
         # Sleep for next iteration. Convert hours to seconds.
-        time.sleep(sleep_time * 60 * 60)
+        sleep(sleep_time * 60 * 60)
+
+        # Increment the count
+        i += 1
 
 
 def main():
