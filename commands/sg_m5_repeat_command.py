@@ -87,7 +87,7 @@ def run(data):
         # Logging end of subprocess.
         end_run = ctime(time())
         print(
-            f'run_id: {i}\n'
+            f'Run id: {i}\n'
             f'Subprocess ended at {end_run}\n'
             '===================================='
         )
@@ -110,10 +110,10 @@ def main():
                 """)
 
     # Optional options
-    parser.add_argument('-time', '--total_time', type=int,
+    parser.add_argument('-time', '--total_time', type=float,
                         help='Provide time in hours to run the process. Default to 12hours.',
                         default='12')
-    parser.add_argument('-sleep', '--sleep', type=int,
+    parser.add_argument('-sleep', '--sleep', type=float,
                         help='Provide time in hours to wait the process. Default to 1hour.',
                         default='1')
 
