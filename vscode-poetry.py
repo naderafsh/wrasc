@@ -4,6 +4,7 @@
 import json
 import subprocess
 from pathlib import Path
+from os import path
 
 # note if you only just installed poetry, you may need to run;
 # source $HOME/.poetry/env
@@ -23,11 +24,21 @@ if Path(".vscode/settings.json").exists():
 else:
     Path(".vscode/settings.json").touch()
 
-settings["python.pythonPath"] = venv_path
+settings["python.venvPath"] = venv_path
+settings["python.pythonPath"] = path.join(venv_path,"Scripts","python.exe")
 # Add the settings for linting
 settings["python.linting.pycodestyleEnabled"] = False
 settings["python.linting.enabled"] = True
 settings["python.linting.pylintEnabled"] = True
+
+settings["python.linting.flake8Enabled"] = True
+settings["python.formatting.provider"] = "black"
+settings["editor.formatOnSave"] = True
+settings["python.linting.flake8Args"] = [
+    "--max-line-length=120",
+    "--ignore=E402,F841,F401,E302,E305,W503",
+]
+settings["autoDocstring.docstringFormat"] = "google"
 
 with open(".vscode/settings.json", "w") as f:
     json.dump(settings, f, sort_keys=True, indent=4)
