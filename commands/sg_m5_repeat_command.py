@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-
-import argparse
+import typer
 from datetime import datetime, timedelta
 from time import time, sleep, ctime
 import logging
@@ -10,138 +9,108 @@ import subprocess
 import json
 
 
-def convert_to_hrs(input_time):
-    """Convert input which is less than 1hour into hours.
-    Say we got 0.25 hours as input, first convert into a
-    whole number, then divide by 60 to get into hours.
-
-    Args:
-        input_time (float): Input time
-
-    Returns:
-        float: converted time in hours
-    """
-    return ((input_time * 100) / 60) if input_time < 1 else input_time
+# Create an instance of typer app with auto_completion turned off
+app = typer.Typer(add_completion=False)
 
 
-def run(data):
-    """Repeat the following process for given interval:
-    1. Run a python file.
-    2. Go to sleep
-
-    Args:
-        data (Namespace): Commandline arguments.
-
-    Returns:
-        None: It doesn't return anything.
-    """
-    total_time, sleep_time = (
-        convert_to_hrs(data.total_time),
-        convert_to_hrs(data.sleep)
-    )
+def run(total_time: int, sleep_time: int):
     current_datetime = datetime.now()
-    total_run_time = current_datetime + timedelta(hours=total_time)
-    sg_m5_repeat_path = Path.cwd().joinpath('examples', 'sg_m5_repeat.py')
+    # Add total_time(minutes) to current time
+    total_run_time = current_datetime + timedelta(minutes=total_time)
+    sg_m5_repeat_path = Path.cwd().joinpath("examples", "sg_m5_repeat.py")
 
     # Prepare filepath to store logs
-    logs_file_path = Path.cwd().joinpath(
-        'logs',
-        'm5-sequence-run'
-    )
+    logs_file_path = Path.cwd().joinpath("logs", "m5-sequence-run")
     # Create the folder to store logs
     logs_file_path.mkdir(parents=True, exist_ok=True)
 
     # Set the basic config for logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        filename=f'{logs_file_path.as_posix()}/{current_datetime.strftime("%Y%m%d-%H%M%S")}.log'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        filename=f'{logs_file_path.as_posix()}/{current_datetime.strftime("%Y%m%d-%H%M%S")}.log',
     )
 
-    print(
-        f'This process is initiated at {ctime(time())}\n'
-    )
+    print(f"This process is initiated at {ctime(time())}\n")
 
-    logging.info(
-        f'This process is initiated at {ctime(time())}'
-    )
+    logging.info(f"This process is initiated at {ctime(time())}")
 
     # Count to log how many times a full run executed.
     i = 1
+
+    # Loop till the current time is less than or equal to total run time.
     while current_datetime <= total_run_time:
-        '''
-        Subprocess run will return a returncode.
-        0 - Successfully ran the subprocess
-        1 - Failed subprocess
-        '''
         start_run = ctime(time())
 
         # Logging start of subprocess.
         print(
-            '======================================\n'
-            f'Run id: {i}\n'
-            f'Subprocess started at {start_run}\n'
+            "======================================\n"
+            f"Run id: {i}\n"
+            f"Subprocess started at {start_run}\n"
         )
 
-        logging.info(json.dumps({
-            'run_id': i,
-            'message': f'Subprocess started at {start_run}'
-        }))
+        logging.info(json.dumps(
+            {
+                "run_id": i,
+                "message": f"Subprocess started at {start_run}"
+            }
+        ))
 
         process = subprocess.run(
-            ['python', sg_m5_repeat_path.as_posix()],
+            ["python", sg_m5_repeat_path.as_posix()],
             capture_output=True,
             shell=True
         )
 
-        # Check whether the subprocess status
+        """
+        Subprocess run will return a returncode.
+        0 - Successfully ran the subprocess
+        1 - Failed subprocess
+        """
         if process.returncode:
-            process_error = process.stderr.decode('utf-8')
+            process_error = process.stderr.decode("utf-8")
+
             print(process_error)
             logging.error(process_error)
-            break
+
+            typer.Abort()
 
         # Logging end of subprocess.
         end_run = ctime(time())
         print(
-            f'Run id: {i}\n'
-            f'Subprocess ended at {end_run}\n'
-            '===================================='
+            f"Run id: {i}\n"
+            f"Subprocess ended at {end_run}\n"
+            "===================================="
         )
 
-        logging.info(json.dumps({
-            'run_id': i,
-            'message': f'Subprocess ended at {end_run}'
-        }))
+        logging.info(json.dumps(
+            {
+                "run_id": i,
+                "message": f"Subprocess ended at {end_run}"
+            }
+        ))
 
-        # Sleep for next iteration. Convert hours to seconds.
-        sleep(sleep_time * 60 * 60)
+        # Display the sleep status as a progressbar.
+        with typer.progressbar(range(sleep_time * 60), label="In Sleep") as progress:
+            for _ in progress:
+                sleep(1)
 
         # Increment the count
         i += 1
 
 
-def main():
-    parser = argparse.ArgumentParser(description="""
-                Run the Icing motors test.
-                """)
-
-    # Optional options
-    parser.add_argument('-time', '--total_time', type=float,
-                        help='Provide time in hours to run the process. Default to 12hours.',
-                        default='12')
-    parser.add_argument('-sleep', '--sleep', type=float,
-                        help='Provide time in hours to wait the process. Default to 1hour.',
-                        default='1')
-
-    try:
-        args = parser.parse_args()
-    except argparse.ArgumentError as e:
-        print(e)
-
+@app.command()
+def main(
+    time: int = typer.Option(720, help="Total time(in minutes) of the run"),
+    sleep: int = typer.Option(60, help="Sleep time(in minutes) of the run"),
+):
+    """Run icing motors tests
+    """
     # Run the process
-    run(args)
+    run(time, sleep)
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    # Create a main command
+    cli = typer.main.get_command(app)
+    cli()
