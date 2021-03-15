@@ -39,7 +39,7 @@ def run(total_time: int, sleep_time: int):
     i = 1
 
     # Loop till the current time is less than or equal to total run time.
-    while current_datetime <= total_run_time:
+    while datetime.now() <= total_run_time:
         start_run = ctime(time())
 
         # Logging start of subprocess.
