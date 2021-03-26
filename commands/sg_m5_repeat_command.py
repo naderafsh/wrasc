@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import typer
+import click
 from datetime import datetime, timedelta
 from time import time, sleep, ctime
 import logging
@@ -8,28 +8,29 @@ from pathlib import Path
 import subprocess
 import json
 
+# Today's date and time
+current_datetime = datetime.now()
 
-# Create an instance of typer app with auto_completion turned off
-app = typer.Typer(add_completion=False)
+# Prepare filepath to store logs
+logs_file_path = Path.cwd().joinpath("logs", "m5-sequence-run")
+# Create the folder to store logs
+logs_file_path.mkdir(parents=True, exist_ok=True)
+
+# Set the basic config for logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    filename=f'{logs_file_path.as_posix()}/{current_datetime.strftime("%Y%m%d-%H%M%S")}.log',
+)
 
 
-def run(total_time: int, sleep_time: int):
-    current_datetime = datetime.now()
+@click.command()
+@click.option("-time", "--total_time", help="Total time(in minutes) of the run", default=720, type=int)
+@click.option("-sleep", "--sleep_time", help="Sleep time(in minutes) of the run", default=60, type=int)
+def run(total_time, sleep_time):
     # Add total_time(minutes) to current time
     total_run_time = current_datetime + timedelta(minutes=total_time)
     sg_m5_repeat_path = Path.cwd().joinpath("examples", "sg_m5_repeat.py")
-
-    # Prepare filepath to store logs
-    logs_file_path = Path.cwd().joinpath("logs", "m5-sequence-run")
-    # Create the folder to store logs
-    logs_file_path.mkdir(parents=True, exist_ok=True)
-
-    # Set the basic config for logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        filename=f'{logs_file_path.as_posix()}/{current_datetime.strftime("%Y%m%d-%H%M%S")}.log',
-    )
 
     print(f"This process is initiated at {ctime(time())}\n")
 
@@ -73,7 +74,7 @@ def run(total_time: int, sleep_time: int):
             print(process_error)
             logging.error(process_error)
 
-            typer.Abort()
+            click.Abort()
 
         # Logging end of subprocess.
         end_run = ctime(time())
@@ -91,7 +92,7 @@ def run(total_time: int, sleep_time: int):
         ))
 
         # Display the sleep status as a progressbar.
-        with typer.progressbar(range(sleep_time * 60), label="In Sleep") as progress:
+        with click.progressbar(range(sleep_time * 60), label="In Sleep") as progress:
             for _ in progress:
                 sleep(1)
 
@@ -99,18 +100,5 @@ def run(total_time: int, sleep_time: int):
         i += 1
 
 
-@app.command()
-def main(
-    time: int = typer.Option(720, help="Total time(in minutes) of the run"),
-    sleep: int = typer.Option(60, help="Sleep time(in minutes) of the run"),
-):
-    """Run icing motors tests
-    """
-    # Run the process
-    run(time, sleep)
-
-
 if __name__ == "__main__":
-    # Create a main command
-    cli = typer.main.get_command(app)
-    cli()
+    run()
