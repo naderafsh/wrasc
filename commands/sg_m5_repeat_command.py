@@ -50,13 +50,9 @@ def run(total_time, sleep_time):
         start_run = ctime(time())
 
         # Logging start of subprocess.
-        print(
-            "======================================\n",
-            "Run id: {count}.\nSubprocess started at {start}\n".format(
-                count=i,
-                start=start_run
-            )
-        )
+        print("======================================")
+        print("Run id: {count}.".format(count=i))
+        print("Subprocess started at {start}\n".format(start=start_run))
 
         logging.info(json.dumps(
             {
@@ -86,13 +82,10 @@ def run(total_time, sleep_time):
 
         # Logging end of subprocess.
         end_run = ctime(time())
-        print(
-            "Run id: {count}.\nSubprocess ended at {end}\n".format(
-                count=i,
-                end=end_run
-            ),
-            "====================================\n"
-        )
+
+        print("Run id: {count}.".format(count=i))
+        print("Subprocess ended at {end}\n".format(end=end_run))
+        print("====================================")
 
         logging.info(json.dumps(
             {
