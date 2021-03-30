@@ -20,7 +20,9 @@ logs_file_path.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    filename=f'{logs_file_path.as_posix()}/{current_datetime.strftime("%Y%m%d-%H%M%S")}.log',
+    filename="{file}/{name}.log".format(
+        file=logs_file_path.as_posix(), name=current_datetime.strftime('%Y%m%d-%H%M%S')
+    )
 )
 
 
@@ -32,9 +34,13 @@ def run(total_time, sleep_time):
     total_run_time = current_datetime + timedelta(minutes=total_time)
     sg_m5_repeat_path = Path.cwd().joinpath("examples", "sg_m5_repeat.py")
 
-    print(f"This process is initiated at {ctime(time())}\n")
+    print("This process is initiated at {init_time}\n".format(
+        init_time=ctime(time())
+    ))
 
-    logging.info(f"This process is initiated at {ctime(time())}")
+    logging.info("This process is initiated at {init_time}\n".format(
+        init_time=ctime(time())
+    ))
 
     # Count to log how many times a full run executed.
     i = 1
@@ -44,16 +50,14 @@ def run(total_time, sleep_time):
         start_run = ctime(time())
 
         # Logging start of subprocess.
-        print(
-            "======================================\n"
-            f"Run id: {i}\n"
-            f"Subprocess started at {start_run}\n"
-        )
+        print("======================================")
+        print("Run id: {count}.".format(count=i))
+        print("Subprocess started at {start}\n".format(start=start_run))
 
         logging.info(json.dumps(
             {
                 "run_id": i,
-                "message": f"Subprocess started at {start_run}"
+                "message": "Subprocess started at {start}".format(start=start_run)
             }
         ))
 
@@ -78,16 +82,15 @@ def run(total_time, sleep_time):
 
         # Logging end of subprocess.
         end_run = ctime(time())
-        print(
-            f"Run id: {i}\n"
-            f"Subprocess ended at {end_run}\n"
-            "===================================="
-        )
+
+        print("Run id: {count}.".format(count=i))
+        print("Subprocess ended at {end}\n".format(end=end_run))
+        print("====================================")
 
         logging.info(json.dumps(
             {
                 "run_id": i,
-                "message": f"Subprocess ended at {end_run}"
+                "message": "Subprocess ended at {end}".format(end=end_run)
             }
         ))
 
