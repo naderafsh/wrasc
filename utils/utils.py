@@ -1,3 +1,4 @@
+from locale import format_string
 from os import path, rename
 import yaml as ym
 import time
@@ -6,6 +7,61 @@ import regex as re
 jira_key_regex = r"[A-Z]+\-\d+(?=\s)"
 param_regex = r"[a-zA-Z]+_\w*"
 req_code_regex = r"[A-Z]+_\w*"
+
+# def _group_replacer(data, match):
+#     data_key = match.group(1)
+#     return data[data_key]
+
+
+class ShortHand:
+    """
+    This class auto completes shorthanded text messages/naes/references based on the recent activity.
+    Based on the preset format, it tries to guess 
+    and complete shorthanded leading ( and maybe trailing ) text. 
+    """
+
+    # expression = r"\([^\(]*<([^<]*)>[^\(]*\)"
+    # expression = re.compile(expression)
+
+    # reversed = re.sub(expression, partial(_group_replacer, data), string)
+
+    def __init__(self, group_formats: list) -> None:
+
+        self.format_list = group_formats
+        self.full_expression = ""
+        for group in self.format_list:
+            self.full_expression += "(" + group[0] + ")*" + group[1]
+
+        self.template = re.compile(self.full_expression)
+        self.text_groups = [None] * len(group_formats)
+
+    def long(self, in_text):
+        self.in_text = in_text
+        self._decompose()
+        return self._compose()
+
+    def _decompose(self):
+
+        # parse the new text input:
+        text_fields = list(re.findall(self.full_expression, self.in_text)[0])
+
+        for i, old_text in enumerate(self.text_groups):
+
+            if text_fields[i]:
+                self.text_groups[i] = text_fields[i]
+            elif old_text:
+                text_fields[i] = old_text
+            else:
+                # both are blank, we are confused!!
+                raise RuntimeError(f"ambiguous input {self.in_text} while the ")
+
+    def _compose(self):
+        out_text = ""
+        # compose the full length output from self.text_fields
+        for i, group in enumerate(self.format_list):
+            out_text += self.text_groups[i] + group[1]
+
+        return out_text
 
 
 def avoid_overwrite(filepath):
