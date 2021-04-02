@@ -24,10 +24,17 @@ class ShortHand:
     # expression = re.compile(expression)
 
     # reversed = re.sub(expression, partial(_group_replacer, data), string)
+    in_text = ...  # type: str
 
-    def __init__(self, group_formats: list) -> None:
+    def __init__(
+        self, group_formats: list, ditto_char="/", pre_dittos=False, post_dittos=False
+    ) -> None:
 
         self.format_list = group_formats
+        self.ditto_char = ditto_char
+        self.pre_dittos = pre_dittos
+        self.post_dittos = post_dittos
+
         self.full_expression = ""
         for group in self.format_list:
             self.full_expression += "(" + group[0] + ")*" + group[1]
@@ -43,17 +50,43 @@ class ShortHand:
     def _decompose(self):
 
         # parse the new text input:
-        text_fields = list(re.findall(self.full_expression, self.in_text)[0])
+        match = re.search(self.full_expression, self.in_text)
+        match_group = match.group()
+        match_groups = re.findall(self.full_expression, self.in_text)
+        for mg in match_groups:
+            if any(mg):
+                match_group = list(mg)
+                # the first non-empty group is accepted
+                break
 
+        pre_text = True
+        post_text = False
         for i, old_text in enumerate(self.text_groups):
 
-            if text_fields[i]:
-                self.text_groups[i] = text_fields[i]
+            if match_group[i]:
+                # a text in a field is found
+                if match_group[i] == self.ditto_char:
+                    # a ditto is found
+                    if self.pre_dittos:
+                        continue
+
+                pre_text = False
+                self.text_groups[i] = match_group[i]
             elif old_text:
-                text_fields[i] = old_text
+                post_text = not pre_text
+                if pre_text and self.pre_dittos:
+                    if not self.in_text[i] == self.ditto_char:
+                        # this is an error, because we haven't found no text and no dittos
+                        raise RuntimeError(
+                            f"pre_dittos missing at position {i} of {self.in_text}"
+                        )
+
+                match_group[i] = old_text
             else:
                 # both are blank, we are confused!!
-                raise RuntimeError(f"ambiguous input {self.in_text} while the ")
+                raise RuntimeError(
+                    f"No pretext to complete {self.in_text}, pretext is {self.text_groups} "
+                )
 
     def _compose(self):
         out_text = ""
