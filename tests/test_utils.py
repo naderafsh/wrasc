@@ -50,18 +50,41 @@ def test_sh_pre_ditto():
     #
     with pytest.raises(Exception) as e_info:
         assert sh_pre_ditto.long("MOT_02") == "SR05ID01DEV02:MOT_02.PVA"
-    assert str(e_info.value.args[0]).startswith("pre_dittos")
+    assert str(e_info.value.args[0]).startswith("Dittos missing")
     # print(f"\n Expected exception: {e_info.value.args[0]}")
 
     with pytest.raises(Exception) as e_info:
         assert sh_pre_ditto.long("//MOT_02") == "SR05ID01DEV02:MOT_02.PVA"
-    assert str(e_info.value.args[0]).startswith("pre_dittos")
+    assert str(e_info.value.args[0]).startswith("Dittos missing")
 
     assert sh_pre_ditto.long("///MOT_02//") == "SR05ID01DEV02:MOT_02.PVA"
+
+
+def test_sh_post_ditto():
+    # pre-dittoed shorthands are safer to use. they expect ditto char placeholders for missing prefixes
+    sh_post_ditto = ut.ShortHand(group_formats=epics_motor_field_fs, post_dittos=True)
+
+    # complete sentence
+    assert sh_post_ditto.long("SR05ID01DEV02:MOT01.PVA") == "SR05ID01DEV02:MOT01.PVA"
+    #
+    with pytest.raises(Exception) as e_info:
+        assert sh_post_ditto.long("MOT_02") == "SR05ID01DEV02:MOT_02.PVA"
+    assert str(e_info.value.args[0]).startswith("Dittos missing")
+    # print(f"\n Expected exception: {e_info.value.args[0]}")
+
+    with pytest.raises(Exception) as e_info:
+        assert sh_post_ditto.long("///MOT_02") == "SR05ID01DEV02:MOT_02.PVA"
+    assert str(e_info.value.args[0]).startswith("Dittos missing")
+
+    assert sh_post_ditto.long("///MOT_02/") == "SR05ID01DEV02:MOT_02.PVA"
+    # assert sh_post_ditto.long("MOT_02/") == "SR05ID01DEV02:MOT_02.PVA"
+
+    assert sh_post_ditto.long("MOT_02/") == "SR05ID01DEV02:MOT_02.PVA"
 
 
 if __name__ == "__main__":
     test_sh_no_ditto()
     test_sh_pre_ditto()
+    test_sh_post_ditto()
 
     print("\n\n\nall tests passed.\n\n\n")

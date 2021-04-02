@@ -61,27 +61,34 @@ class ShortHand:
 
         pre_text = True
         post_text = False
+        chars_found_count = 0
+        dittos_found_count = 0
         for i, old_text in enumerate(self.text_groups):
 
             if match_group[i]:
-                # a text in a field is found
-                if match_group[i] == self.ditto_char:
-                    # a ditto is found
-                    if self.pre_dittos:
-                        continue
-
                 pre_text = False
+                chars_found_count += len(match_group[i])
                 self.text_groups[i] = match_group[i]
             elif old_text:
                 post_text = not pre_text
-                if pre_text and self.pre_dittos:
-                    if not self.in_text[i] == self.ditto_char:
+                expecting_dittos = (self.pre_dittos and pre_text) or (
+                    self.post_dittos and post_text
+                )
+                expected_position = dittos_found_count + chars_found_count
+
+                if (len(self.in_text) > expected_position) and (
+                    self.in_text[expected_position] == self.ditto_char
+                ):
+                    # a missing word... is there a ditto here
+                    dittos_found_count += 1
+                else:
+                    # blank in this placeholder
+                    if expecting_dittos:
                         # this is an error, because we haven't found no text and no dittos
                         raise RuntimeError(
-                            f"pre_dittos missing at position {i} of {self.in_text}"
+                            f"Dittos missing at position {expected_position} of {self.in_text}"
                         )
 
-                match_group[i] = old_text
             else:
                 # both are blank, we are confused!!
                 raise RuntimeError(
