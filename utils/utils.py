@@ -24,7 +24,7 @@ class ShortHand:
     # expression = re.compile(expression)
 
     # reversed = re.sub(expression, partial(_group_replacer, data), string)
-    in_text = ...  # type: str
+    short_text = ...  # type: str
 
     def __init__(
         self, group_formats: list, ditto_char="/", pre_dittos=False, post_dittos=False
@@ -42,17 +42,27 @@ class ShortHand:
         self.template = re.compile(self.full_expression)
         self.text_groups = [None] * len(group_formats)
 
-    def long(self, in_text):
-        self.in_text = in_text
+    def long(self, short_text: str):
+        """ generates long form from short hand input 
+            by filling in the blanks using latest inputs
+
+        Args:
+            short_text (str): [description]
+
+        Returns:
+            [type]: [complete long form inferred from history]
+        """
+
+        self.short_text = short_text
         self._decompose()
         return self._compose()
 
     def _decompose(self):
 
         # parse the new text input:
-        match = re.search(self.full_expression, self.in_text)
+        match = re.search(self.full_expression, self.short_text)
         match_group = match.group()
-        match_groups = re.findall(self.full_expression, self.in_text)
+        match_groups = re.findall(self.full_expression, self.short_text)
         for mg in match_groups:
             if any(mg):
                 match_group = list(mg)
@@ -76,8 +86,8 @@ class ShortHand:
                 )
                 expected_position = dittos_found_count + chars_found_count
 
-                if (len(self.in_text) > expected_position) and (
-                    self.in_text[expected_position] == self.ditto_char
+                if (len(self.short_text) > expected_position) and (
+                    self.short_text[expected_position] == self.ditto_char
                 ):
                     # a missing word... is there a ditto here
                     dittos_found_count += 1
@@ -86,22 +96,23 @@ class ShortHand:
                     if expecting_dittos:
                         # this is an error, because we haven't found no text and no dittos
                         raise RuntimeError(
-                            f"Dittos missing at position {expected_position} of {self.in_text}"
+                            f"Dittos missing at position {expected_position} of {self.short_text}"
                         )
 
             else:
                 # both are blank, we are confused!!
                 raise RuntimeError(
-                    f"No pretext to complete {self.in_text}, pretext is {self.text_groups} "
+                    f"No pretext to complete {self.short_text}, pretext is {self.text_groups} "
                 )
 
     def _compose(self):
-        out_text = ""
+        # compose the long form
+        long_text = ""  # type: str
         # compose the full length output from self.text_fields
         for i, group in enumerate(self.format_list):
-            out_text += self.text_groups[i] + group[1]
+            long_text += self.text_groups[i] + group[1]
 
-        return out_text
+        return long_text
 
 
 def avoid_overwrite(filepath):
