@@ -1,9 +1,14 @@
+from collections import defaultdict
+
+from epics import PV
 import utils.utils as ut
 import utils.eputils as et
 import pytest
 
+# to be moved to module
 
-def test_motor_tests():
+
+def test_smartepics():
 
     cil_motor_field_fs = [
         [r"CIL[:]{1}", ""],  # Device designator, ends with ":"
@@ -28,7 +33,16 @@ def test_motor_tests():
     assert mt.check([None, None, "2 ** 2 == 4"])
 
 
+def test_epicsmotor():
+
+    mymot = et.EpicsMotor("CIL:MOT2")
+
+    for epv in mymot.all_epvs:
+        print(f"{epv.pyname} -> {epv.fullname} = {epv.PV.value}")
+
+
 if __name__ == "__main__":
-    test_motor_tests()
+    test_smartepics()
+    test_epicsmotor()
 
     print("\n\n\nAll tests passed.\n\n\n")
