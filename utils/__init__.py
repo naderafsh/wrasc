@@ -14,6 +14,8 @@ from .utils import (
     ShortHand,
 )
 
+from .eputils import SmartEpics
+
 __all__ = [
     "dump_obj",
     "avoid_overwrite",
@@ -24,4 +26,5 @@ __all__ = [
     "req_code_regex",
     "time_stamp",
     "ShortHand",
+    "SmartEpics",
 ]

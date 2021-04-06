@@ -7,12 +7,6 @@ import regex as re
 
 maths_sym_rx = r"[\+\-\*\/=><! \(\)]"
 
-cil_motor_field_fs = [
-    [r"CIL[:]{1}", ""],  # Device designator, ends with ":"
-    [r"[\w_]+", ""],  # Motor () designator
-    [r"[.:]{1}[\w]+", ""],  # Motor field, starts with either "." or ":"
-]
-
 
 def parse_vars(stat):
 
@@ -20,7 +14,7 @@ def parse_vars(stat):
     maths_split = re.split(maths_sym_rx, stat)
     var_list = []
     vars_index = 0
-    for i, item in enumerate(maths_split):
+    for item in maths_split:
         # is this item blank?
         if not item:
             continue
@@ -130,25 +124,5 @@ class SmartEpics:
         return all(self.pass_list)
 
 
-def test_motor_tests():
-    sh_cil = ut.ShortHand(group_formats=cil_motor_field_fs, post_dittos=True)
-    # complete sentence
-    assert sh_cil.long("CIL:MOT1.RBV") == "CIL:MOT1.RBV"
-
-    # now quickly defining all of the required pv's
-    mt = SmartEpics(prefix="CIL:MOT1")
-
-    if not mt.check(["~.RBV==~.VAL"]):
-        print(f"Motor position is not sync'd: {mt.prefix}")
-
-    if mt.check(["~:PhaseFound.RVAL==1", "~.MSTA==0"]):
-        # motor is ready for testing!
-        pass
-
-    assert mt.check([None, None, "2 ** 2 == 4"])
-
-
 if __name__ == "__main__":
-    test_motor_tests()
-
-    print("\n\n\nall tests passed.\n\n\n")
+    pass
