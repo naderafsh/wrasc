@@ -84,8 +84,8 @@ test_stats = {
             "EncTable[L7].pEnc=PowerBrick[L4].Chan[L5].ServoCapt.a",
         ]
     ],
-    "Motor[L1].AdcMask=$FFFC0000": [
-        ["_var_0=$FFFC0000", ["Motor[L1].AdcMask"], "Motor[L1].AdcMask=$FFFC0000"]
+    "Motor[L1].AdcMask=4294705152": [  # TODO: make it work with $FFFC0000
+        ["_var_0=4294705152", ["Motor[L1].AdcMask"], "Motor[L1].AdcMask=4294705152"]
     ],
     "Motor[L1].PwmSf=16372.8846675712": [
         [

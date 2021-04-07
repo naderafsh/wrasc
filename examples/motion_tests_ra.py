@@ -198,7 +198,7 @@ class OL_RDB_Mlim(ra.Device):
             pass_conds="Motor[L1].InPos==1",
             celeb_cmds=["#{L1}jog:{smalljog_steps}"],
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_small_until.csv"),
+            csv_file_path=path.join(tst["csv_out_folder"], "ma_small_until.csv"),
             ongoing=True,
             poll_pr=(
                 lambda ag_self: not ag_self.owner.ma_start_pos_ag.inhibited
@@ -225,7 +225,7 @@ class OL_RDB_Mlim(ra.Device):
             cry_cmds=["#{L1}jog-"],
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_slide_on_mlim.csv"),
+            csv_file_path=path.join(tst["csv_out_folder"], "ma_slide_on_mlim.csv"),
             #
             celeb_cmds=["#{L7}kill"],
             wait_after_celeb=tst["Mot_A"]["limit_settle_time"],
@@ -252,7 +252,7 @@ class OL_RDB_Mlim(ra.Device):
             SlideOff_Dir="+",
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_slide_off_mlim.csv"),
+            csv_file_path=path.join(tst["csv_out_folder"], "ma_slide_off_mlim.csv"),
             # resetting the changes in this action
             celeb_cmds=[
                 "Motor[L1].JogSpeed={JogSpeed}",
@@ -361,12 +361,15 @@ class OL_Rdb_Lim2Lim(ra.Device):
 
         self.motor_id = motor_id
 
-        step_res = tst[self.motor_id]["step_res"] = (
-            1
-            / tst[self.motor_id]["fullsteps_per_rev"]
-            / tst[self.motor_id]["micro_steps"]
-            * tst[self.motor_id]["overall_egu_per_rev"]
-        )
+        if "motor_unit_per_rev" in tst[self.motor_id]:
+            step_res = tst[self.motor_id]["motor_unit_per_rev"]
+        else:
+            step_res = tst[self.motor_id]["step_res"] = (
+                1
+                / tst[self.motor_id]["fullsteps_per_rev"]
+                / tst[self.motor_id]["micro_steps"]
+                * tst[self.motor_id]["overall_egu_per_rev"]
+            )
         enc_res = tst[self.motor_id]["encoder_res"]
         tst[self.motor_id]["smalljog_steps"] = (
             tst[self.motor_id]["smalljog_egu"] / step_res
@@ -402,17 +405,21 @@ class OL_Rdb_Lim2Lim(ra.Device):
         # but we don't have a reason to do so, yet!
 
         pp_glob_dict = ppra.load_pp_globals(tst["ppglobal_fname"])
-        with open(tst["baseconfig_fname"]) as f:
-            base_config = f.read().splitlines()
 
-        # using a default set of parameters to log for each motor
-        default_pass_logs = ppra.expand_globals(
-            tls.log_main_n_companion, pp_glob_dict, **tst[self.motor_id]
-        )
+        if path.exists(tst["baseconfig_fname"]):
+            with open(tst["baseconfig_fname"]) as f:
+                base_config = f.read().splitlines()
+
+            # using a default set of parameters to log for each motor
+            default_pass_logs = ppra.expand_globals(
+                tls.log_main_n_companion, pp_glob_dict, **tst[self.motor_id]
+            )
 
         pp_glob_dict = ppra.load_pp_globals(tst["ppglobal_fname"])
-        with open(r"C:\Users\afsharn\gitdir\wrasc\examples\data\systemsetup.cfg") as f:
-            system_config = f.read().splitlines()
+
+        if path.exists(tst["sysconfig_fname"]):
+            with open(tst["sysconfig_fname"]) as f:
+                system_config = f.read().splitlines()
 
         ################################################################################################################
         # folowing section is defining wrasc agents for specific jobs. nothing happens untill the agents get processed #
@@ -528,7 +535,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             # cry_cmds=["#{L1}jog+"],
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_slide_on_plim.csv"),
+            csv_file_path=path.join(tst["csv_out_folder"], "ma_slide_on_plim.csv"),
             #
             celeb_cmds=["#{L7}kill"],
             wait_after_celeb=tst[self.motor_id]["limit_settle_time"],
@@ -543,7 +550,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             wait_after_celeb=tst[self.motor_id]["jog_settle_time"],
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_jog_pos.csv"),
+            csv_file_path=path.join(tst["csv_out_folder"], "ma_jog_pos.csv"),
         )
 
         self.ma_jog_neg_ag = ppra.WrascPmacGate(
@@ -554,7 +561,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             wait_after_celeb=tst[self.motor_id]["jog_settle_time"],
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_jog_neg.csv"),
+            csv_file_path=path.join(tst["csv_out_folder"], "ma_jog_neg.csv"),
         )
 
         self.ma_slide_off_plim_ag = ppra.WrascPmacGate(
@@ -574,7 +581,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             cry_retries=1,
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_slide_off_plim.csv"),
+            csv_file_path=path.join(tst["csv_out_folder"], "ma_slide_off_plim.csv"),
             # resetting the changes in this action
             celeb_cmds=[
                 "Motor[L1].JogSpeed={JogSpeed}",
@@ -597,7 +604,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             # cry_cmds=["#{L1}jog-"],
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_slide_on_mlim.csv"),
+            csv_file_path=path.join(tst["csv_out_folder"], "ma_slide_on_mlim.csv"),
             #
             celeb_cmds=["#{L7}kill"],
             wait_after_celeb=tst[self.motor_id]["limit_settle_time"],
@@ -624,7 +631,7 @@ class OL_Rdb_Lim2Lim(ra.Device):
             SlideOff_Dir="+",
             #
             pass_logs=default_pass_logs,
-            csv_file_path=path.join("autest_out", "ma_slide_off_mlim.csv"),
+            csv_file_path=path.join(tst["csv_out_folder"], "ma_slide_off_mlim.csv"),
             # resetting the changes in this action
             celeb_cmds=[
                 "Motor[L1].JogSpeed={JogSpeed}",

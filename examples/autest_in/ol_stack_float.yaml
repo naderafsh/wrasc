@@ -1,0 +1,52 @@
+Mot_A:
+  ID: CIL_M1
+  
+  # CHANNEL SPEC
+  axis_no: 2
+  L1: 2
+  L2: 0
+  L3: 1
+  L4: 0
+  L5: 1
+  L6: 1
+  L7: 10
+
+  # TEST SPECS
+  JogSpeed_EGU: 4 # revs/sec
+  HomeOffset_EGU: 0.1
+  HomeVel_EGU: 0.8
+
+  attackpos_egu: 2
+  slideoff_steps: 0.1
+  
+  smalljog_egu: 5
+  bigjog_egu: 10
+  jog_settle_time: 1
+  limit_settle_time: 2
+  
+  # MOTOR UNIT  
+  motor_unit_per_rev: 1 # supply this when mu is scaled in the controller. 
+  overall_egu_per_rev: 1
+  fullrange_egu: 100
+  fullsteps_per_rev: 200
+  micro_steps: 512
+  # READBACK ENCODER
+  encoder_res: 5.0e-05
+  encoder_reversed: true
+
+
+  
+# GLOBAL SETTINGS
+clearance_egu: 3
+loop_repeats: 1
+wrasc_cycle_period: 0.25
+
+csv_out_folder: autest_out/
+ppglobal_fname: examples/autest_in/NA_stack_float/pp_global.sym
+baseconfig_fname: examples/data/ppmac_base_config.cfg
+baseconfig_download: false
+sysconfig_fname: examples/data/systemsetup.cfg
+sysconfig_download: false
+
+ppmac_hostname: 10.23.92.220
+ppmac_is_backward: false
