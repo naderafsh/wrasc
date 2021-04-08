@@ -1,35 +1,3 @@
-#!/usr/bin/env python
-#
-# $File: //ASP/Personal/afsharn/wrasc/examples/rascan2_ra.py $
-# $Revision: #1 $
-# $DateTime: 2020/08/09 22:35:08 $
-# Last checked in by: $Author: afsharn $
-#
-# Description
-# <description text>
-#
-# Copyright (c) 2019 Australian Synchrotron
-#
-# This library is free software; you can redistribute it and/or
-# modify it under the terms of the GNU Lesser General Public
-# Licence as published by the Free Software Foundation; either
-# version 2.1 of the Licence, or (at your option) any later version.
-#
-# This library is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# Lesser General Public Licence for more details.
-#
-# You should have received a copy of the GNU Lesser General Public
-# Licence along with this library; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
-#
-# Contact details:
-# nadera@ansto.gov.au
-# 800 Blackburn Road, Clayton, Victoria 3168, Australia.
-#
-
-
 from inspect import getmembers, isdatadescriptor
 from os import path
 
@@ -38,7 +6,7 @@ from wrasc import ppmac_ra as ppra
 import motion_modules.ppmac_code_templates as tls
 
 
-class OL_Rdb_Lim2Lim(ra.Device):
+class OLRdbLim2Lim(ra.Device):
     """
     base_config
     then test_config configures for the rdb_capture test

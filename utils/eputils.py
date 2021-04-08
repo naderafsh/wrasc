@@ -129,7 +129,7 @@ class SmartEpics:
 
 
 class EPV:
-    def __init__(self, prefix,) -> None:
+    def __init__(self, prefix: str,) -> None:
 
         """[summary]
 
@@ -137,23 +137,24 @@ class EPV:
         Returns:
             [type]: [description]
         """
-        self.pyname = None
+        self.pyname = None  # type: str
 
         self.prefix = prefix
 
-        self.shortname = None
+        self.shortname = None  # type: str
 
-        self.PV = None
+        self.PV = None  # type: PV
 
         # additional variables
 
         self.expected_value = None
+        self.verified = None
 
         # minimum incremental change
         self.inc_resolution = None
 
         # error tolerance used to verify
-        self.default_tolerance = None
+        self.default_tolerance = 0
 
         self.timer = timer
 
@@ -161,7 +162,7 @@ class EPV:
 
         # self.change(self, expected_value=None)
 
-    def connection_callback(self, pvname, conn, pv):
+    def connection_callback(self, pvname: str, conn, pv):
 
         assert self.fullname == pvname
         self.done_connecting = conn
@@ -207,6 +208,14 @@ class EPV:
             access_callback,
         )
 
+    @property
+    def value(self):
+        return self.PV.value
+
+    @value.setter
+    def value(self, set_val):
+        self.PV.value = self.expected_value = set_val
+
     def change(self, expected_value=None):
 
         needs_polling = False
@@ -224,15 +233,28 @@ class EPV:
         if not tolerance:
             tolerance = self.default_tolerance
 
-        return abs(self.PV.value - expected_value) < tolerance
+        return abs(self.PV.value - expected_value) <= tolerance
 
-    def verify(self, expected_value, tolerance: None):
+    def verify(self, expected_value=None, tolerance=None):
 
-        if self.PV.type is float:
-            return self.is_almost(expected_value, tolerance)
+        if not expected_value:
+            expected_value = self.expected_value
+        else:
+            self.expected_value = expected_value
+
+        if not self.expected_value:
+            # if there was no default, and no new expected value is supplied
+            self.expected_value = self.value
+
+        if self.PV.type in ["time_double", "time_short"]:
+            self.verified = self.is_almost(self.expected_value, tolerance)
 
         elif self.PV.type is str:
-            return self.PV.value == str(expected_value)
+            self.verified = self.PV.value == str(self.expected_value)
+        else:
+            print(f" NEED TO ADD NEW TYPE TO VERIFY: {self.PV.type}")
+
+        return self.verified
 
     def connecting(self, timeout=2):
 
@@ -267,34 +289,17 @@ class EpicsMotor:
 
         """
 
-        self.usregu_pvs = [
-            self._d_rbv,
-            self._d_val,
-            self._d_velo,
-            self._d_vmax,
-            self._d_twv,
-            self._d_off,
-            self._d_hlm,
-            self._d_llm,
-        ] = list(map(EPV, [self.prefix] * 8))
-
         self.dot_epvs = [
             self._d_bdst,
-            self._d_bvel,
-            self._d_dmov,
             self._d_dval,
             self._d_escf,
             self._d_eres,
-            self._d_hls,
             self._d_jar,
             self._d_egu,
-            self._d_lls,
             self._d_mscf,
             self._d_mres,
-            self._d_msta,
             self._d_rdbd,
-            self._d_rdif,
-        ] = list(map(EPV, [self.prefix] * 15))
+        ] = list(map(EPV, [self.prefix] * 9))
 
         self.non_dot_epvs = [
             self._c_kill_d_proc,
@@ -302,6 +307,27 @@ class EpicsMotor:
             self._c_PhaseFound_d_RVAL,
             self._c_ConfigLock_d_RVAL,
         ] = list(map(EPV, [self.prefix] * 4))
+
+        self.usregu_epvs = [
+            self._d_rbv,
+            self._d_val,
+            self._d_velo,
+            self._d_vmax,
+            self._d_bvel,
+            self._d_twv,
+            self._d_off,
+            self._d_hlm,
+            self._d_llm,
+            self._d_rdif,
+        ] = list(map(EPV, [self.prefix] * 10))
+
+        self.status_epvs = [
+            self._d_dmov,
+            self._d_hls,
+            self._d_lls,
+            self._d_msta,
+            self._d_lvio,
+        ] = list(map(EPV, [self.prefix] * 5))
 
         self.epv_count = 0
         self.all_epvs = set([])
@@ -313,9 +339,11 @@ class EpicsMotor:
                 # an epv member of this motor is found,
                 # now connect it
 
-                epv = mem[1]  # type et.EPV
+                epv = mem[1]  # type: EPV
                 epv.pyname = mem[0]
                 shortname = mem[0].replace("_d_", ".").replace("_c_", ":")
+
+                assert shortname
                 if shortname.islower():
                     # this is a hidden convention:
                     shortname = shortname.upper()
@@ -327,22 +355,36 @@ class EpicsMotor:
 
         self.printable_list = []
 
-        for epv in self.all_epvs:  # type ExtendedPV
+        for epv in self.all_epvs:  # type: ExtendedPV
             if epv.connecting(timeout=3):
                 self.printable_list.append([f"{epv.PV.pvname}", "connected"])
             else:
                 self.printable_list.append([f"{epv.PV.pvname}", "timed out"])
 
-        self.default_egu = self._d_egu.PV.value
-        self.con_epvs = set([epv for epv in self.all_epvs if epv.PV.connected])
+        self.default_egu = self._d_egu.PV.value  # type: str
+        self.connected_epvs = set([epv for epv in self.all_epvs if epv.PV.connected])
         self.egu_epvs = set()  # a new copy
 
-        for epv in self.con_epvs:
+        for epv in self.connected_epvs:
             if not epv.PV.units:
                 continue
 
             if self.default_egu in epv.PV.units:
                 self.egu_epvs.add(epv)
+        self.set_def_tol()
+
+    def set_def_tol(self):
+
+        for epv in self.usregu_epvs:
+            if epv.PV.units == self.default_egu:
+                # egu values
+                epv.default_tolerance = self._d_mres.PV.value * 2
+            elif epv.PV.units.startswith(self.default_egu):
+                # velocity values
+                epv.default_tolerance = self._d_mres.PV.value * 2 * 1 / 0.01  # sec
+            else:
+                # what else?
+                pass
 
 
 if __name__ == "__main__":
