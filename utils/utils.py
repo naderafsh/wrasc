@@ -3,21 +3,60 @@ from os import path, rename
 import yaml as ym
 import time
 import regex as re
+from xlrd import Book as xlrdbook
+from openpyxl import workbook as openpybook
+
 
 jira_key_regex = r"[A-Z]+\-\d+(?=\s)"
 param_regex = r"[a-zA-Z]+_\w*"
 req_code_regex = r"[A-Z]+_\w*"
 
-# def _group_replacer(data, match):
-#     data_key = match.group(1)
-#     return data[data_key]
+
+def set_test_params(tst, motor_id):
+    """setup the test parameters
+
+    Args:
+        tst ([type]): [description]
+    """
+
+    if "motor_unit_per_rev" in tst[motor_id]:
+        step_res = tst[motor_id]["motor_unit_per_rev"]
+    else:
+        step_res = tst[motor_id]["step_res"] = (
+            1
+            / tst[motor_id]["fullsteps_per_rev"]
+            / tst[motor_id]["micro_steps"]
+            * tst[motor_id]["overall_egu_per_rev"]
+        )
+    enc_res = tst[motor_id]["encoder_res"]
+    tst[motor_id]["smalljog_steps"] = tst[motor_id]["smalljog_egu"] / step_res
+    tst[motor_id]["bigjog_steps"] = tst[motor_id]["bigjog_egu"] / step_res
+
+    tst[motor_id]["jog_step_ratio"] = (
+        tst[motor_id]["bigjog_egu"] / tst[motor_id]["smalljog_egu"]
+    )
+    tst[motor_id]["HomeOffset"] = tst[motor_id]["HomeOffset_EGU"] / step_res
+    tst[motor_id]["attackpos_enc"] = (
+        tst[motor_id]["attackpos_egu"] + tst[motor_id]["HomeOffset_EGU"]
+    ) / enc_res
+    tst[motor_id]["JogSpeed"] = tst[motor_id]["JogSpeed_EGU"] / step_res / 1000
+    tst[motor_id]["HomeVel"] = tst[motor_id]["HomeVel_EGU"] / step_res / 1000
+
+    tst[motor_id]["fullrange_steps"] = tst[motor_id]["fullrange_egu"] / step_res
+
+    tst[motor_id]["clearance_enc"] = tst["clearance_egu"] / enc_res
+
+    return tst
+
+    # it is possible to use multiple gpascii channels,
+    # but we don't have a reason to do so, yet!
 
 
 class ShortHand:
     """
     This class auto completes shorthanded text messages/naes/references based on the recent activity.
-    Based on the preset format, it tries to guess 
-    and complete shorthanded leading ( and maybe trailing ) text. 
+    Based on the preset format, it tries to guess
+    and complete shorthanded leading ( and maybe trailing ) text.
     """
 
     # expression = r"\([^\(]*<([^<]*)>[^\(]*\)"
@@ -43,7 +82,7 @@ class ShortHand:
         self.text_groups = [None] * len(group_formats)
 
     def long(self, short_text: str):
-        """ generates long form from short hand input 
+        """generates long form from short hand input
             by filling in the blanks using latest inputs
 
         Args:
@@ -113,6 +152,77 @@ class ShortHand:
             long_text += self.text_groups[i] + group[1]
 
         return long_text
+
+
+def xlrd_sheet_to_dict(wb, sheet_name, heading_row, first_col, key_col):
+    """makes a dict for sheet specified by sheet_name
+    keys shall be in rows, (one column)
+
+    excel workbook (.xls or .xlsx) into object wb
+
+
+    Args:
+        wb (xlrd.Book): workbook source object
+        sheet_name (str): sheet name
+        heading_row (int, optional): where heading row is found (Excel row 1 is index 0). Defaults to 2.
+        first_col (int, optional): leftmost column of the table (Excel column 'A' is index 0). Defaults to 2.
+        key_col (int, optional): dict keys are picked at thios column (Excel column 'A' is index 0). Defaults to None.
+
+    Returns:
+        [dict]: [description]
+    """
+
+    assert isinstance(wb, xlrdbook)
+
+    sheet = wb.sheet_by_name(sheet_name)
+    sheet_dict = dict()
+    for row in range(heading_row + 1, sheet.nrows):
+
+        row_dict = dict()
+        for col in range(first_col, sheet.ncols):
+            value = sheet.cell(row, col).value
+            key = str(sheet.cell(heading_row, col).value).strip()
+            try:
+                value = str(value).strip()
+            except ValueError:
+                pass
+
+            if col == key_col:
+                req_key = value
+                continue
+
+            row_dict.update({key: value})
+
+        sheet_dict.update({req_key: row_dict})
+
+    return sheet_dict
+
+
+def opxl_sheet_to_dict(wb, sheet_name, heading_row=2, first_col=2, key_col=None):
+
+    assert isinstance(wb, openpybook)
+    sheet = wb[sheet_name]
+    reqs = dict()
+    for row in range(heading_row + 1, sheet.max_row):
+
+        req = dict()
+        for col in range(first_col, sheet.max_column):
+            value = sheet.cell(row + 1, col + 1).value
+            key = str(sheet.cell(heading_row + 1, col + 1).value).strip()
+            try:
+                value = str((value)).strip()
+            except ValueError:
+                pass
+
+            if col == key_col:
+                req_key = value
+                continue
+
+            req.update({key: value})
+
+        reqs.update({req_key: req})
+
+    return reqs
 
 
 def avoid_overwrite(filepath):

@@ -6,22 +6,26 @@ from os import path
 
 # from wrasc import gpcom_wrap
 # from os import environ, path
-from examples.motion_tests_ra import OL_Rdb_Lim2Lim
+from motion_modules.ol_test_ra import OL_Rdb_Lim2Lim
 
 import utils
+from utils.utils import set_test_params
 from time import sleep
 
 
 if __name__ == "__main__":
 
     tst = utils.undump_obj(
-        "ol_stack_float",
-        path.join(path.dirname(path.abspath(__file__)), "autest_in/NA_stack_float"),
+        "stack_float", path.join(path.dirname(path.abspath(__file__)), ""),
     )
+
     # tst["ppmac_hostname"] = "10.23.220.232"
     # tst["ppmac_is_backward"] = True
 
-    ol_test = OL_Rdb_Lim2Lim(_VERBOSE_=2, tst=tst, motor_id="Mot_A")
+    motor_id = "Mot_A"
+    tst = set_test_params(tst, motor_id)
+
+    ol_test = OL_Rdb_Lim2Lim(tst=tst, motor_id=motor_id, _VERBOSE_=2)
     agents = ppra.ra.compile_n_install({}, globals().copy(), "blah")
     max_loop = 100
 

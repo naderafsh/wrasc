@@ -19,10 +19,10 @@ Mot_A:
   attackpos_egu: 2
   slideoff_steps: 0.1
   
-  smalljog_egu: 5
-  bigjog_egu: 10
-  jog_settle_time: 1
-  limit_settle_time: 2
+  smalljog_egu: 49
+  bigjog_egu: 50
+  jog_settle_time: 4
+  limit_settle_time: 4
   
   # MOTOR UNIT  
   motor_unit_per_rev: 1 # supply this when mu is scaled in the controller. 
@@ -38,14 +38,14 @@ Mot_A:
   
 # GLOBAL SETTINGS
 clearance_egu: 3
-loop_repeats: 1
+loop_repeats: 2
 wrasc_cycle_period: 0.25
 
 csv_out_folder: autest_out/
-ppglobal_fname: examples/autest_in/NA_stack_float/pp_global.sym
-baseconfig_fname: examples/data/ppmac_base_config.cfg
+ppglobal_fname: motion_modules/NA_stack_float/pp_global.sym
+baseconfig_fname: motion_modules/data/ppmac_base_config.cfg
 baseconfig_download: false
-sysconfig_fname: examples/data/systemsetup.cfg
+sysconfig_fname: motion_modules/data/systemsetup.cfg
 sysconfig_download: false
 
 ppmac_hostname: 10.23.92.220

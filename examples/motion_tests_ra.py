@@ -355,11 +355,12 @@ class OL_Rdb_Lim2Lim(ra.Device):
         ra ([type]): [description]
     """
 
-    def __init__(self, tst=None, _VERBOSE_=1, motor_id="Mot_A", **kwargs):
-        self.dmDeviceType = "OLRDBCapt"
-        super().__init__(**kwargs)
+    def set_test_params(self, tst):
+        """setup the test parameters
 
-        self.motor_id = motor_id
+        Args:
+            tst ([type]): [description]
+        """
 
         if "motor_unit_per_rev" in tst[self.motor_id]:
             step_res = tst[self.motor_id]["motor_unit_per_rev"]
@@ -398,11 +399,22 @@ class OL_Rdb_Lim2Lim(ra.Device):
 
         clearance_enc = tst["clearance_egu"] / enc_res
 
+        return clearance_enc
+
+        # it is possible to use multiple gpascii channels,
+        # but we don't have a reason to do so, yet!
+
+    def __init__(self, tst=None, _VERBOSE_=1, motor_id="Mot_A", **kwargs):
+        self.dmDeviceType = "OLRDBCapt"
+        super().__init__(**kwargs)
+
+        self.motor_id = motor_id
+
+        clearance_enc = self.set_test_params(tst)
+
         self.test_ppmac = ppra.PPMAC(
             tst["ppmac_hostname"], backward=tst["ppmac_is_backward"]
         )
-        # it is possible to use multiple gpascii channels,
-        # but we don't have a reason to do so, yet!
 
         pp_glob_dict = ppra.load_pp_globals(tst["ppglobal_fname"])
 
