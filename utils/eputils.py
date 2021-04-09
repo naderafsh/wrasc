@@ -1,3 +1,4 @@
+from math import remainder
 from wrasc.ppmac_ra import isPmacNumber
 import utils as ut
 import pytest
@@ -5,7 +6,7 @@ from epics import PV, caget, caput
 import regex as re
 from typing import List
 from timeit import default_timer as timer
-from time import sleep, time
+from time import CLOCK_THREAD_CPUTIME_ID, sleep, time
 from inspect import getmembers
 
 
@@ -129,7 +130,7 @@ class SmartEpics:
 
 
 class EPV:
-    def __init__(self, prefix: str,) -> None:
+    def __init__(self, prefix: str, infs_equal=True) -> None:
 
         """[summary]
 
@@ -147,8 +148,11 @@ class EPV:
 
         # additional variables
 
-        self.expected_value = None
+        self._expected_value = None
+        self.saved_value = None
         self.verified = None
+        self.fail_if_unexpected = False
+        self.infs_equal = infs_equal
 
         # minimum incremental change
         self.inc_resolution = None
@@ -209,19 +213,31 @@ class EPV:
         )
 
     @property
+    def expected(self):
+        return self._expected_value
+
+    @expected.setter
+    def expected(self, set_val):
+        # now that this value is literally set from outside:
+        self.fail_if_unexpected = True
+        self._expected_value = set_val
+
+    @property
     def value(self):
         return self.PV.value
 
     @value.setter
     def value(self, set_val):
-        self.PV.value = self.expected_value = set_val
+        # TODO make this an array of timed values
+        self.saved_value = self.PV.value
+        self.PV.value = self.expected = set_val
 
     def change(self, expected_value=None):
 
         needs_polling = False
 
         if expected_value:
-            self.expected_value = expected_value
+            self._expected_value = expected_value
             needs_polling = True
             self.changed = True
 
@@ -233,26 +249,56 @@ class EPV:
         if not tolerance:
             tolerance = self.default_tolerance
 
-        return abs(self.PV.value - expected_value) <= tolerance
+        if (
+            self.infs_equal
+            and self.PV.value == float("inf")
+            and self._expected_value == float("inf")
+        ):
+            return True
+        elif (
+            self.infs_equal
+            and -self.PV.value == float("inf")
+            and -self._expected_value == float("inf")
+        ):
+            return True
+        else:
+            return abs(self.PV.value - expected_value) <= tolerance
 
     def verify(self, expected_value=None, tolerance=None):
 
-        if not expected_value:
-            expected_value = self.expected_value
+        if expected_value is None:
+            expected_value = self.expected
         else:
-            self.expected_value = expected_value
+            self.expected = expected_value
 
-        if not self.expected_value:
+        if self.expected is None:
             # if there was no default, and no new expected value is supplied
-            self.expected_value = self.value
+            self.expected = self.value
+            # setting expected changes it to fail if changed, revert it
+            self.fail_if_unexpected = False
 
-        if self.PV.type in ["time_double", "time_short"]:
-            self.verified = self.is_almost(self.expected_value, tolerance)
+        bitwise_ = str(self.expected)
+        if bitwise_.startswith("$"):
+            val = int(self.value)
+            bitwise_ = bitwise_.strip("$")
+            # bitwise comparison
+            for i in range(0, len(bitwise_) - 1):
+                bitnum = len(bitwise_) - 1 - i
+                if bitwise_[i] not in ["0", "1"]:
+                    continue
 
-        elif self.PV.type is str:
-            self.verified = self.PV.value == str(self.expected_value)
+                if ((val >> (bitnum - 1)) & 1) != int(bitwise_[i]):
+                    self.verified = False
+                    break
+            self.verified = True
+
+        elif self.PV.type in ["time_double", "time_short", "time_long"]:
+            self.verified = self.is_almost(self.expected, tolerance)
+
+        elif self.PV.type in [str]:
+            self.verified = self.PV.value == str(self.expected)
         else:
-            print(f" NEED TO ADD NEW TYPE TO VERIFY: {self.PV.type}")
+            raise RuntimeError(f" NEED TO ADD NEW TYPE TO VERIFY: {self.PV.type}")
 
         return self.verified
 
@@ -269,7 +315,7 @@ class EPV:
 
 
 class EpicsMotor:
-    def __init__(self, prefix) -> None:
+    def __init__(self, prefix, travel_range=None, default_wait=1) -> None:
         """[summary]
 
 
@@ -280,6 +326,9 @@ class EpicsMotor:
         """
 
         self.prefix = prefix
+        self.travel_range = travel_range
+
+        self.default_wait = default_wait
 
         # self.bdst = list(map(et.EPV, [self.prefix] * 1))
 
@@ -298,15 +347,9 @@ class EpicsMotor:
             self._d_egu,
             self._d_mscf,
             self._d_mres,
+            self._d_dir,
             self._d_rdbd,
-        ] = list(map(EPV, [self.prefix] * 9))
-
-        self.non_dot_epvs = [
-            self._c_kill_d_proc,
-            self._c_InPos_d_RVAL,
-            self._c_PhaseFound_d_RVAL,
-            self._c_ConfigLock_d_RVAL,
-        ] = list(map(EPV, [self.prefix] * 4))
+        ] = list(map(EPV, [self.prefix] * 10))
 
         self.usregu_epvs = [
             self._d_rbv,
@@ -327,6 +370,17 @@ class EpicsMotor:
             self._d_lls,
             self._d_msta,
             self._d_lvio,
+            self._c_InPos_d_RVAL,
+            self._c_PhaseFound_d_RVAL,
+            self._c_ConfigLock_d_RVAL,
+        ] = list(map(EPV, [self.prefix] * 8))
+
+        self.control_s = [
+            self._c_kill_d_proc,
+            self._d_jogf,
+            self._d_jogr,
+            self._c_homing,
+            self._d_set,
         ] = list(map(EPV, [self.prefix] * 5))
 
         self.epv_count = 0
@@ -386,6 +440,59 @@ class EpicsMotor:
                 # what else?
                 pass
 
+    def move(self, pos_inc=0, timeout=None, override_slims=False, expect_success=True):
 
-if __name__ == "__main__":
-    pass
+        self.pos_setpoint = self._d_rbv.value + pos_inc
+
+        if override_slims:
+            if self._d_hlm.value < self.pos_setpoint:
+                self._d_hlm.value = (
+                    self.pos_setpoint + 100 * self._d_hlm.default_tolerance + 0.1
+                )
+            if self._d_llm.value > self.pos_setpoint:
+                self._d_llm.value = (
+                    self.pos_setpoint - 100 * self._d_llm.default_tolerance - 0.1
+                )
+
+        self._d_val.value = self.pos_setpoint
+        if expect_success:
+
+            self._d_rdif.expected = 0
+            self._d_rbv.expected = self.pos_setpoint
+            self._d_msta.expected = "$x00xx0xx0xxx0xxx"
+            self._d_lls.expected = 0
+            self._d_hls.expected = 0
+            self._d_dmov.expected = 1
+        else:
+            self._d_val.fail_if_unexpected = False
+
+        # and wait until dmov or timeout:
+        if not timeout:
+            # set timneout based on velocity
+            timeout = abs(pos_inc / self._d_velo.value) + 2 * 0.1 + 1
+
+        sleep(0.1)
+        start_time = time()
+        while not self._d_dmov.value:
+            print(f".", end="")
+            sleep(0.05)
+            if time() - start_time > timeout:
+                print(f"timeout")
+                break
+        print("")
+
+    def reset_expected_values(self, epvs=None):
+        """resets all expected values to current values and sets them to non-strick
+            so that fail_if_unexpected will be false
+        """
+        if not epvs:
+            epvs = self.all_epvs
+
+        for epv in epvs:
+            assert isinstance(epv, EPV)
+
+            epv._expected_value = epv.value
+            epv.fail_if_unexpected = False
+
+    if __name__ == "__main__":
+        pass

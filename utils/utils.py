@@ -19,15 +19,18 @@ def set_test_params(tst, motor_id):
         tst ([type]): [description]
     """
 
+    tst[motor_id]["mres"] = (
+        1
+        / tst[motor_id]["fullsteps_per_rev"]
+        / tst[motor_id]["micro_steps"]
+        * tst[motor_id]["overall_egu_per_rev"]
+    )
+
     if "motor_unit_per_rev" in tst[motor_id]:
         step_res = tst[motor_id]["motor_unit_per_rev"]
     else:
-        step_res = tst[motor_id]["step_res"] = (
-            1
-            / tst[motor_id]["fullsteps_per_rev"]
-            / tst[motor_id]["micro_steps"]
-            * tst[motor_id]["overall_egu_per_rev"]
-        )
+        step_res = tst[motor_id]["mres"]
+
     enc_res = tst[motor_id]["encoder_res"]
     tst[motor_id]["smalljog_steps"] = tst[motor_id]["smalljog_egu"] / step_res
     tst[motor_id]["bigjog_steps"] = tst[motor_id]["bigjog_egu"] / step_res

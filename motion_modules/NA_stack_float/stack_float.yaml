@@ -23,6 +23,7 @@ Mot_A:
   bigjog_egu: 50
   jog_settle_time: 4
   limit_settle_time: 4
+  travel_range_egu : 100
   
   # MOTOR UNIT  
   motor_unit_per_rev: 1 # supply this when mu is scaled in the controller. 
