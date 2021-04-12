@@ -69,7 +69,8 @@ def verify_all(verify_epvs):
 
 def test_case(func):
     def function_wrapper(mot: et.EpicsMotor, **kwargs):
-        print(f"{func.__name__}", end=" ... ")
+
+        print(f"{func.__name__} {kwargs}", end=" ... ")
         logging.info(f"{func.__name__}\nDescription:\n{func.__doc__}")
         f_msg = func(mot, **kwargs)
         sleep(mot.default_wait)
@@ -87,7 +88,7 @@ def test_case(func):
         # wait for the user to interact
         if stop_at_fail and not passed:
             usr = input("press any key... [Abort]")
-            if usr.upper == "A":
+            if usr.upper() == "A":
                 print("Aborting.")
                 exit(1)
         return passed, v_msg
@@ -113,25 +114,59 @@ def tc_base_setting(mot: et.EpicsMotor, **kwargs):
 
     mot._d_twv.value = 5
 
-    mot._d_hlm.value = tst["Mot_A"]["travel_range_egu"] * (1.01)
-    mot._d_llm.value = 0 - tst["Mot_A"]["travel_range_egu"] * (0.01)
+    mot._d_hlm.value = tst["Mot_A"]["fullrange_egu"] * (1.01)
+    mot._d_llm.value = 0 - tst["Mot_A"]["fullrange_egu"] * (0.01)
 
     mot._d_set.value = 0
+
+    mot._d_dir.value = 0
 
     mot.reset_expected_values()
 
 
 @test_case
 def tc_move_to_mlim(mot: et.EpicsMotor, **kwargs):
-    """move to mlim using preset range information (not JREV)
+    """move to hardware mlim using preset range information (not JREV)
     """
     # move indefinitely reverse towards mlim
-    mot._d_lls.expected_value = 1
-    mot._d_hls.expected_value = 0
+    mot._d_lls.expected_value = 1 - mot._d_dir.value
+    mot._d_hls.expected_value = mot._d_dir.value
+
+    mlim_direction = -2 * (0.5 - mot._d_dir.value)
 
     mot.move(
-        -mot.travel_range, override_slims=True, expect_success=False,
+        mlim_direction * mot.travel_range, override_slims=True, expect_success=False,
     )
+
+    # move indefinitely reverse towards mlim
+    mot._d_msta.expected_value = "$x10xx0xx0xxx0xxx"
+
+    # wait for the flags to come back, in addition to motors default wait
+    sleep(0.5)
+
+
+@test_case
+def tc_move_to_lim(mot: et.EpicsMotor, **kwargs):
+    """move to hardware mlim using preset range information (not JREV)
+    """
+
+    dial_direction = kwargs.get("dial_direction", None)
+
+    usr_direction = 2 * (0.5 - mot._d_dir.value) * dial_direction
+
+    # move indefinitely reverse towards mlim
+    mot._d_lls.expected_value = 1 if usr_direction < 0 else 0
+    mot._d_hls.expected_value = 0 if usr_direction < 0 else 1
+
+    mot.move(
+        usr_direction * mot.travel_range, override_slims=True, expect_success=False,
+    )
+
+    # move indefinitely reverse towards mlim
+    mot._d_msta.expected_value = (
+        "$x10xx0xx0xxx0xxx" if dial_direction < -1 else "$x00xx0xx0xxx1xxx"
+    )
+
     # wait for the flags to come back, in addition to motors default wait
     sleep(0.5)
 
@@ -151,7 +186,7 @@ def tc_home_on_mlim(mot: et.EpicsMotor, **kwargs):
 def tc_change_offset(mot: et.EpicsMotor, **kwargs):
     """USR_CRD_FNC
        change offset value (directly) to match the input [set_pos]
-       ( not using .SET mechanism just yet)
+       ( not using .SET mechanism )
        verify that all user coord variables immediately change accoringly
     """
 
@@ -279,6 +314,63 @@ def tc_hls(mot: et.EpicsMotor, **kwargs):
     mot._d_hls.expected_value = 1
 
 
+@test_case
+def tc_toggle_dir(mot: et.EpicsMotor, **kwargs):
+    """USR_CRD_FNC
+       toggle .DIR (directly) 
+       
+       verify that all user coord variables immediately change accordingly
+       so that:
+       1 - motion direction is reversed, meaning .DRBV -> -.DRBV
+       2 - offset is chaged so that current readback value is unchanged
+
+
+    """
+
+    assert mot._d_dmov.value
+
+    post_dir = 1 - mot._d_dir.value
+
+    dir_sign = 1 if post_dir == 0 else -1
+
+    mot._d_drbv.expected_value = mot._d_off.value + dir_sign * mot._d_rbv.value
+
+    mot._d_dmov.expected_value = 1
+    # change of direction is around the CURRENT position
+    mot._d_rbv.expected_value = mot._d_rbv.value
+    mot._d_rdif.expected_value = mot._d_rdif.value
+
+    # no changes in the status ?
+    # an "unused bit of the MSTA actually changes!"
+
+    mot._d_msta.expected_value = mot._d_msta.value
+
+    mot._d_dir.value = post_dir
+
+
+@test_case
+def tc_set_offset(mot: et.EpicsMotor, **kwargs):
+    """USR_CRD_FNC
+       set user offset using .SET so that .VAL matches tuser request [set_pos]
+       ( this is using .SET mechanism)
+       verify that all user coord variables immediately change accoringly
+    """
+
+    assert mot._d_dmov.value
+
+    set_pos = kwargs.get("set_pos", 1)
+
+    mot._d_val.expected_value = set_pos
+    mot._d_off.expected_value = set_pos - mot._d_val.value + mot._d_off.value
+
+    mot._d_dmov.expected_value = 1
+    # rdif shall remain unchanged
+    mot._d_rdif.expected_value = mot._d_rdif.value
+
+    mot._d_set.value = 1
+    mot._d_val.value = set_pos
+
+
 if __name__ == "__main__":
 
     stop_at_fail = True
@@ -294,7 +386,9 @@ if __name__ == "__main__":
     tst = set_test_params(tst, motor_id)
 
     mot = et.EpicsMotor(
-        "CIL:MOT2", travel_range=100, InPosBand=tst["Mot_A"]["InPosBand"],
+        "CIL:MOT2",
+        travel_range=tst["Mot_A"]["fullrange_egu"],
+        InPosBand=tst["Mot_A"]["InPosBand"],
     )
     # print(f"{mot.printable_list}")
     # for epv in mot.all_epvs:
@@ -342,8 +436,8 @@ if __name__ == "__main__":
     """
 
     tc_base_setting(mot)
-    tc_move_to_mlim(mot)
-    tc_home_on_mlim(mot)
+    tc_move_to_lim(mot, dial_direction=1)
+    tc_move_to_lim(mot, dial_direction=-1)
     # tc_home_on_mlim(mot)
 
     # # manually home it here until HOMING is implemented:
@@ -353,7 +447,7 @@ if __name__ == "__main__":
 
     tc_change_offset(mot, set_pos=-1)
 
-    tc_move(mot, pos_inc=5, override_slims=True)
+    tc_move(mot, pos_inc=5 * (1 if mot._d_dir.value == 0 else -1), override_slims=True)
 
     # SFT_LMT tests
     tc_softlim_inf(mot)
@@ -380,6 +474,10 @@ if __name__ == "__main__":
     """
 
     tc_base_setting(mot)
+    tc_toggle_dir(mot)
+    tc_toggle_dir(mot)
+    tc_base_setting(mot)
+    tc_set_offset(mot, set_pos=-1)
 
     # see what happens of OFF is changed:
 

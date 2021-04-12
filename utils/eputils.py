@@ -410,6 +410,10 @@ class EpicsMotor:
             self._d_rdbd,
         ] = list(map(EPV, [self.prefix] * 10))
 
+        self.dialegu_epvs = [self._d_dval, self._d_drbv] = list(
+            map(EPV, [self.prefix] * 2)
+        )
+
         self.usregu_epvs = [
             self._d_rbv,
             self._d_val,
