@@ -1,3 +1,4 @@
+from ctypes import sizeof
 from math import remainder
 from wrasc.ppmac_ra import isPmacNumber
 import utils as ut
@@ -11,6 +12,8 @@ from inspect import getmembers
 
 
 maths_sym_rx = r"[\+\-\*\/=><! \(\)]"
+
+pv_num_types = ["time_double", "time_short", "time_long"]
 
 
 def parse_vars(stat):
@@ -149,6 +152,11 @@ class EPV:
         # additional variables
 
         self._expected_value = None
+        self._tolerance = None
+
+        # error tolerance used to verify
+        self.default_tolerance = 0
+
         self.saved_value = None
         self.verified = None
         self.fail_if_unexpected = False
@@ -156,9 +164,6 @@ class EPV:
 
         # minimum incremental change
         self.inc_resolution = None
-
-        # error tolerance used to verify
-        self.default_tolerance = 0
 
         self.timer = timer
 
@@ -213,14 +218,52 @@ class EPV:
         )
 
     @property
-    def expected(self):
+    def expected_value(self):
         return self._expected_value
 
-    @expected.setter
-    def expected(self, set_val):
+    @expected_value.setter
+    def expected_value(self, set_val_tol):
+        """[summary]
+
+        Args:
+            set_tup ([type]): [description]
+        """
+        # is this a val_tol or just val
+        if isinstance(set_val_tol, tuple):
+            set_val, set_tol = set_val_tol
+        else:
+            #
+            set_val = set_val_tol
+            set_tol = None
+
         # now that this value is literally set from outside:
         self.fail_if_unexpected = True
+        if self.PV.type in [str]:
+            assert isinstance(set_val, str)
+            self._tolerance = None
+
+        elif isinstance(set_val, str):
+            assert set_val.startswith("$") or isPmacNumber(set_val)
+            self._tolerance = set_tol
+        else:
+            # otherwise, a number:
+            float(set_val)
+            self._tolerance = set_tol
+
         self._expected_value = set_val
+
+    @property
+    def tolerance(self):
+        if self._tolerance is None:
+            self._tolerance = self.default_tolerance
+        return self._tolerance
+
+    @tolerance.setter
+    def tolerance(self, set_tol):
+        self._tolerance = set_tol
+        if self.default_tolerance is None:
+            self.default_tolerance = self._tolerance
+        self.verified = False
 
     @property
     def value(self):
@@ -230,24 +273,25 @@ class EPV:
     def value(self, set_val):
         # TODO make this an array of timed values
         self.saved_value = self.PV.value
-        self.PV.value = self.expected = set_val
+        self.PV.value = self.expected_value = set_val
+        self.verified = False
 
-    def change(self, expected_value=None):
+    # def change(self, expected_value=None):
 
-        needs_polling = False
+    #     needs_polling = False
 
-        if expected_value:
-            self._expected_value = expected_value
-            needs_polling = True
-            self.changed = True
+    #     if expected_value:
+    #         self._expected_value = expected_value
+    #         needs_polling = True
+    #         self.changed = True
 
-        if needs_polling:
-            self.PV.poll()
+    #     if needs_polling:
+    #         self.PV.poll()
 
     def is_almost(self, expected_value: float, tolerance: None):
 
-        if not tolerance:
-            tolerance = self.default_tolerance
+        if tolerance is None:
+            tolerance = self.tolerance
 
         if (
             self.infs_equal
@@ -257,8 +301,8 @@ class EPV:
             return True
         elif (
             self.infs_equal
-            and -self.PV.value == float("inf")
-            and -self._expected_value == float("inf")
+            and (-self.PV.value == float("inf"))
+            and (-self._expected_value == float("inf"))
         ):
             return True
         else:
@@ -267,17 +311,17 @@ class EPV:
     def verify(self, expected_value=None, tolerance=None):
 
         if expected_value is None:
-            expected_value = self.expected
+            expected_value = self.expected_value
         else:
-            self.expected = expected_value
+            self.expected_value = expected_value
 
-        if self.expected is None:
+        if self.expected_value is None:
             # if there was no default, and no new expected value is supplied
-            self.expected = self.value
+            self.expected_value = self.value
             # setting expected changes it to fail if changed, revert it
             self.fail_if_unexpected = False
 
-        bitwise_ = str(self.expected)
+        bitwise_ = str(self.expected_value)
         if bitwise_.startswith("$"):
             val = int(self.value)
             bitwise_ = bitwise_.strip("$")
@@ -292,11 +336,11 @@ class EPV:
                     break
             self.verified = True
 
-        elif self.PV.type in ["time_double", "time_short", "time_long"]:
-            self.verified = self.is_almost(self.expected, tolerance)
+        elif self.PV.type in pv_num_types:
+            self.verified = self.is_almost(self.expected_value, tolerance)
 
         elif self.PV.type in [str]:
-            self.verified = self.PV.value == str(self.expected)
+            self.verified = self.PV.value == str(self.expected_value)
         else:
             raise RuntimeError(f" NEED TO ADD NEW TYPE TO VERIFY: {self.PV.type}")
 
@@ -315,7 +359,9 @@ class EPV:
 
 
 class EpicsMotor:
-    def __init__(self, prefix, travel_range=None, default_wait=1) -> None:
+    def __init__(
+        self, prefix, travel_range=None, default_wait=1, InPosBand=None
+    ) -> None:
         """[summary]
 
 
@@ -327,7 +373,7 @@ class EpicsMotor:
 
         self.prefix = prefix
         self.travel_range = travel_range
-
+        self.in_pos_band = InPosBand
         self.default_wait = default_wait
 
         # self.bdst = list(map(et.EPV, [self.prefix] * 1))
@@ -457,12 +503,12 @@ class EpicsMotor:
         self._d_val.value = self.pos_setpoint
         if expect_success:
 
-            self._d_rdif.expected = 0
-            self._d_rbv.expected = self.pos_setpoint
-            self._d_msta.expected = "$x00xx0xx0xxx0xxx"
-            self._d_lls.expected = 0
-            self._d_hls.expected = 0
-            self._d_dmov.expected = 1
+            self._d_rdif.expected_value = (0, self.in_pos_band)
+            self._d_rbv.expected_value = (self.pos_setpoint, self.in_pos_band)
+            self._d_msta.expected_value = "$x00xx0xx0xxx0xxx"
+            self._d_lls.expected_value = 0
+            self._d_hls.expected_value = 0
+            self._d_dmov.expected_value = 1
         else:
             self._d_val.fail_if_unexpected = False
 
@@ -473,24 +519,30 @@ class EpicsMotor:
 
         sleep(0.1)
         start_time = time()
+        back_str = ""
         while not self._d_dmov.value:
-            print(f".", end="")
-            sleep(0.05)
-            if time() - start_time > timeout:
-                print(f"timeout")
+            elapsed_time = time() - start_time
+
+            if elapsed_time > timeout:
+                print(f"- timeout", end="")
                 break
-        print("")
+
+            print(back_str, end="")
+            sleep(0.05)
+            elapsed_time_str = f"{elapsed_time:6.2f}"
+            print(elapsed_time_str, end="", flush=True)
+            back_str = "\b" * len(elapsed_time_str)
+        print("", end=" ")
 
     def reset_expected_values(self, epvs=None):
         """resets all expected values to current values and sets them to non-strick
             so that fail_if_unexpected will be false
         """
         if not epvs:
-            epvs = self.all_epvs
+            epvs = self.connected_epvs
 
         for epv in epvs:
             assert isinstance(epv, EPV)
-
             epv._expected_value = epv.value
             epv.fail_if_unexpected = False
 

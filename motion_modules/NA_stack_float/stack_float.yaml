@@ -35,6 +35,8 @@ Mot_A:
   encoder_res: 5.0e-05
   encoder_reversed: true
 
+  InPosBand : 0.005
+
 
   
 # GLOBAL SETTINGS
