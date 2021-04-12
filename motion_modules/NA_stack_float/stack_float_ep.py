@@ -32,20 +32,29 @@ logging.basicConfig(
     ),  # current_datetime.strftime('%Y%m%d-%H%M%S')
 )
 
+user_confirm = None
+
 
 def verify_all(verify_epvs):
     fail_count = 0
     msg = ""
     for epv in verify_epvs:
         assert isinstance(epv, et.EPV)
-        if epv.verify():
+        verified = epv.verify()
+        if verified:
             if epv.tolerance != epv.default_tolerance:
-                msg += f"{epv.PV.pvname}({epv.value}) is in band({epv.tolerance}) of expected({epv.expected_value})\n"
+                msg += f"{epv.PV.pvname}({epv.value}) is within {epv.tolerance} of expected({epv.expected_value}) [{epv.PV.units}]\n"
         elif not epv.fail_if_unexpected:
             msg += f"  Change: {epv.PV.pvname}({epv.value}) was {epv.expected_value}\n"
         else:
             fail_count += 1
             msg += f"  Fail: {epv.PV.pvname}({epv.value}) expected value is {epv.expected_value}\n"
+
+        if not epv.persistent_failure and verified is False:
+            # once a fail is reported, the expected value can be set to actual
+            # so that this failure is not spread to consequential tests.
+            # this feature shall be used with extreme care;
+            epv.expected_value = None
 
     passed = fail_count == 0
 
@@ -61,7 +70,7 @@ def verify_all(verify_epvs):
 def test_case(func):
     def function_wrapper(mot: et.EpicsMotor, **kwargs):
         print(f"{func.__name__}", end=" ... ")
-        logging.info(f"{func.__name__}\Runing test:\n{func.__doc__}")
+        logging.info(f"{func.__name__}\nDescription:\n{func.__doc__}")
         f_msg = func(mot, **kwargs)
         sleep(mot.default_wait)
         passed, msg = verify_all(verify_epvs)
@@ -74,6 +83,13 @@ def test_case(func):
             print("pass")
         else:
             print("FAIL")
+
+        # wait for the user to interact
+        if stop_at_fail and not passed:
+            usr = input("press any key... [Abort]")
+            if usr.upper == "A":
+                print("Aborting.")
+                exit(1)
         return passed, v_msg
 
     return function_wrapper
@@ -100,12 +116,14 @@ def tc_base_setting(mot: et.EpicsMotor, **kwargs):
     mot._d_hlm.value = tst["Mot_A"]["travel_range_egu"] * (1.01)
     mot._d_llm.value = 0 - tst["Mot_A"]["travel_range_egu"] * (0.01)
 
+    mot._d_set.value = 0
+
     mot.reset_expected_values()
 
 
 @test_case
 def tc_move_to_mlim(mot: et.EpicsMotor, **kwargs):
-    """using limited move not JFOR
+    """move to mlim using preset range information (not JREV)
     """
     # move indefinitely reverse towards mlim
     mot._d_lls.expected_value = 1
@@ -114,6 +132,8 @@ def tc_move_to_mlim(mot: et.EpicsMotor, **kwargs):
     mot.move(
         -mot.travel_range, override_slims=True, expect_success=False,
     )
+    # wait for the flags to come back, in addition to motors default wait
+    sleep(0.5)
 
 
 @test_case
@@ -129,6 +149,11 @@ def tc_home_on_mlim(mot: et.EpicsMotor, **kwargs):
 
 @test_case
 def tc_change_offset(mot: et.EpicsMotor, **kwargs):
+    """USR_CRD_FNC
+       change offset value (directly) to match the input [set_pos]
+       ( not using .SET mechanism just yet)
+       verify that all user coord variables immediately change accoringly
+    """
 
     assert mot._d_dmov.value
 
@@ -144,6 +169,8 @@ def tc_change_offset(mot: et.EpicsMotor, **kwargs):
 
     mot._d_hlm.value = mot.travel_range
     mot._d_llm.value = 0
+
+    mot._d_set.value = 0
 
     mot._d_hlm.expected_value = mot._d_hlm.expected_value + offset
     mot._d_llm.expected_value = mot._d_llm.expected_value + offset
@@ -176,17 +203,19 @@ def tc_softlims_llm_reject(mot: et.EpicsMotor, **kwargs):
     """
 
     pos_inc = kwargs.get("pos_inc", -1)
+    # setting llm so that the requested move is outside the limit
     mot._d_llm.value = mot._d_rbv.value + pos_inc + mot._d_llm.default_tolerance
-    mot.move(pos_inc=pos_inc, override_slims=False, expect_success=False)
 
-    # new val shall be rejected, reverted back to sync rbv
-    mot._d_val.expected_value = mot._d_rbv.value
+    # new val shall be rejected, reverted back to: old val, or rbv?
+    mot._d_val.expected_value = mot._d_val.value
 
-    # sof limit flag raised
+    # soft limit flag shall be raised
     mot._d_lvio.expected_value = 1
 
-    # val and rbv synced
-    mot._d_rdif.expected_value = 0
+    # val to rbv value shall not change
+    mot._d_rdif.expected_value = mot._d_rdif.value
+
+    mot.move(pos_inc=pos_inc, override_slims=False, expect_success=False)
 
 
 @test_case
@@ -252,6 +281,8 @@ def tc_hls(mot: et.EpicsMotor, **kwargs):
 
 if __name__ == "__main__":
 
+    stop_at_fail = True
+
     tst = undump_obj(
         "stack_float", path.join(path.dirname(path.abspath(__file__)), ""),
     )
@@ -312,6 +343,7 @@ if __name__ == "__main__":
 
     tc_base_setting(mot)
     tc_move_to_mlim(mot)
+    tc_home_on_mlim(mot)
     # tc_home_on_mlim(mot)
 
     # # manually home it here until HOMING is implemented:

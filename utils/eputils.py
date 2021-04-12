@@ -133,7 +133,7 @@ class SmartEpics:
 
 
 class EPV:
-    def __init__(self, prefix: str, infs_equal=True) -> None:
+    def __init__(self, prefix: str, infs_equal=True, default_tolerance=0) -> None:
 
         """[summary]
 
@@ -154,8 +154,14 @@ class EPV:
         self._expected_value = None
         self._tolerance = None
 
+        # this flag indicates that the expected value can be set to actual
+        # once fail is registered, so that this failure is not spread to consequential tests.
+        # this flag shall be used externally
+        # and shall be used with extreme care
+        self.persistent_failure = None
+
         # error tolerance used to verify
-        self.default_tolerance = 0
+        self.default_tolerance = default_tolerance
 
         self.saved_value = None
         self.verified = None
@@ -228,7 +234,7 @@ class EPV:
         Args:
             set_tup ([type]): [description]
         """
-        # is this a val_tol or just val
+        # unpack
         if isinstance(set_val_tol, tuple):
             set_val, set_tol = set_val_tol
         else:
@@ -236,8 +242,7 @@ class EPV:
             set_val = set_val_tol
             set_tol = None
 
-        # now that this value is literally set from outside:
-        self.fail_if_unexpected = True
+        # assert type consistency
         if self.PV.type in [str]:
             assert isinstance(set_val, str)
             self._tolerance = None
@@ -247,10 +252,18 @@ class EPV:
             self._tolerance = set_tol
         else:
             # otherwise, a number:
-            float(set_val)
+            if set_val is not None:
+                float(set_val)
             self._tolerance = set_tol
 
-        self._expected_value = set_val
+        # if set_value is None, it means there is no expected value
+        if set_val is None:
+            self.fail_if_unexpected = False
+            self._expected_value = None
+        else:
+            # now that this value is literally set from outside:
+            self.fail_if_unexpected = True
+            self._expected_value = set_val
 
     @property
     def tolerance(self):
@@ -360,7 +373,7 @@ class EPV:
 
 class EpicsMotor:
     def __init__(
-        self, prefix, travel_range=None, default_wait=1, InPosBand=None
+        self, prefix, travel_range=None, default_wait=0.5, InPosBand=None
     ) -> None:
         """[summary]
 
@@ -508,9 +521,11 @@ class EpicsMotor:
             self._d_msta.expected_value = "$x00xx0xx0xxx0xxx"
             self._d_lls.expected_value = 0
             self._d_hls.expected_value = 0
-            self._d_dmov.expected_value = 1
+
         else:
             self._d_val.fail_if_unexpected = False
+
+        self._d_dmov.expected_value = 1
 
         # and wait until dmov or timeout:
         if not timeout:
