@@ -314,8 +314,8 @@ class EPV:
             return True
         elif (
             self.infs_equal
-            and (-self.PV.value == float("inf"))
-            and (-self._expected_value == float("inf"))
+            and (-1 * self.PV.value == float("inf"))
+            and (-1 * self._expected_value == float("inf"))
         ):
             return True
         else:
@@ -372,9 +372,7 @@ class EPV:
 
 
 class EpicsMotor:
-    def __init__(
-        self, prefix, travel_range=None, default_wait=0.5, InPosBand=None
-    ) -> None:
+    def __init__(self, prefix, default_wait=0.5, base_settings=None,) -> None:
         """[summary]
 
 
@@ -383,10 +381,13 @@ class EpicsMotor:
         Args:
             prefix ([type]): [description]
         """
+        self.base_settings = base_settings
+
+        self.travel_range = float(self.base_settings["fullrange_egu"])
+        self.in_pos_band = float(self.base_settings["InPosBand"])
 
         self.prefix = prefix
-        self.travel_range = travel_range
-        self.in_pos_band = InPosBand
+
         self.default_wait = default_wait
 
         # self.bdst = list(map(et.EPV, [self.prefix] * 1))
@@ -489,6 +490,40 @@ class EpicsMotor:
             if self.default_egu in epv.PV.units:
                 self.egu_epvs.add(epv)
         self.set_def_tol()
+
+        self._set_additional_epv_sets()
+
+    def _set_additional_epv_sets(self):
+        self.user_setting_s = [
+            self._d_twv,
+        ]
+
+        self.val_and_rbv_s = [self._d_val, self._d_rbv, self._d_rdif]
+
+        self.usr_coord_setting_s = [
+            self._d_mres,
+            self._d_mscf,
+            self._d_off,
+        ]
+
+        self.velo_s = [
+            self._d_velo,
+            self._d_vmax,
+        ]
+
+        self.soft_lim_s = [
+            self._d_hlm,
+            self._d_llm,
+        ]
+
+        self.extra_s = [
+            self._d_bdst,
+            self._d_bvel,
+        ]
+
+        self.verify_epvs = set(
+            self.usr_coord_setting_s + self.velo_s + self.usregu_epvs + self.status_epvs
+        )
 
     def set_def_tol(self):
 
