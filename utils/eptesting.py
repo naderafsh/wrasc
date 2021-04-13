@@ -54,7 +54,7 @@ def verify_all(verify_epvs):
 def test_case(func):
     def function_wrapper(mot: et.EpicsMotor, **kwargs):
 
-        stop_at_fail = kwargs.pop("stop_at_fail", True)
+        pause_if_failed = kwargs.pop("pause_if_failed", True)
 
         print(f"{func.__name__} {kwargs}", end=" ... ")
         logging.info(f"{func.__name__}\nDescription:\n{func.__doc__}")
@@ -72,7 +72,7 @@ def test_case(func):
             print("FAIL")
 
         # wait for the user to interact
-        if stop_at_fail and not passed:
+        if pause_if_failed and not passed:
             usr = input("press any key... [Abort]")
             if usr.upper() == "A":
                 print("Aborting.")
@@ -217,13 +217,18 @@ def tc_small_move(mot: et.EpicsMotor, **kwargs):
         - more than mres value
     """
 
-    dircetion = kwargs.pop("direction", 1)
-    jog_dist = dircetion * (mot._d_mres.value * 2 + mot._d_bdst.value * 2)
+    """
+    small move to check baclash and LVIO (soft limits)
+    these were failing asof Mar/21, fixed as of 10/Apr/21
+    """
+
+    direction = kwargs.pop("direction", 1)
+    jog_dist = direction * (mot._d_mres.value * 2 + mot._d_bdst.value * 2)
     mot.move(pos_inc=jog_dist, **kwargs)
 
 
 @test_case
-def tc_softlim_inf(mot: et.EpicsMotor, **kwargs):
+def tc_slims_set_inf(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     softlims set to inf
@@ -233,7 +238,7 @@ def tc_softlim_inf(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_softlims_llm_reject(mot: et.EpicsMotor, **kwargs):
+def tc_slims_llm_reject(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     requests outside the softlims shall be rejected
@@ -266,7 +271,7 @@ def tc_softlims_llm_reject(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_softlims_hlm_reject(mot: et.EpicsMotor, **kwargs):
+def tc_slims_hlm_reject(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     requests outside the softlims shall be rejected
@@ -287,15 +292,14 @@ def tc_softlims_hlm_reject(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_lls(mot: et.EpicsMotor, **kwargs):
+def tc_slims_llm_change(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     when softlimit is changed so that current position is out of softlimit range
     """
-    mot._d_llm.value = mot._d_rbv.value + mot._d_llm.default_tolerance
 
-    # new val shall be rejected, reverted back to sync rbv
-    mot._d_val.expected_value = mot._d_rbv.value
+    direction = -1
+    jog_dist = 5 * direction * (mot._d_mres.value * 2 + mot._d_bdst.value * 2)
 
     # sof limit flag raised
     mot._d_lvio.expected_value = 1
@@ -305,17 +309,21 @@ def tc_lls(mot: et.EpicsMotor, **kwargs):
 
     mot._d_lls.expected_value = 1
 
+    mot._d_val.value += jog_dist
+    mot._d_val.fail_if_unexpected = False
+    sleep(0.1)
+    mot._d_llm.value = mot._d_rbv.value + mot._d_llm.default_tolerance
+
 
 @test_case
-def tc_hls(mot: et.EpicsMotor, **kwargs):
+def tc_slims_hlm_change(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     when softlimit is changed so that current position is out of softlimit range
     """
-    mot._d_hlm.value = mot._d_rbv.value - mot._d_hlm.default_tolerance
 
-    # new val shall be rejected, reverted back to sync rbv
-    mot._d_val.expected_value = mot._d_rbv.value
+    direction = 1
+    jog_dist = 5 * direction * (mot._d_mres.value * 2 + mot._d_bdst.value * 2)
 
     # sof limit flag raised
     mot._d_lvio.expected_value = 1
@@ -324,6 +332,11 @@ def tc_hls(mot: et.EpicsMotor, **kwargs):
     mot._d_rdif.expected_value = 0
 
     mot._d_hls.expected_value = 1
+
+    mot._d_val.value += jog_dist
+    mot._d_val.fail_if_unexpected = False
+    sleep(0.1)
+    mot._d_hlm.value = mot._d_rbv.value - mot._d_hlm.default_tolerance
 
 
 @test_case
@@ -342,7 +355,6 @@ def tc_toggle_dir(mot: et.EpicsMotor, **kwargs):
 
     assert mot._d_dmov.value
 
-    sleep(0.5)
     post_dir = 1 - mot._d_dir.value
 
     dir_sign = 1 if post_dir == 0 else -1
@@ -356,13 +368,11 @@ def tc_toggle_dir(mot: et.EpicsMotor, **kwargs):
 
     # direction changes stops the motor
 
-    mot._d_msta.expected_value = int(mot._d_msta.value) & ~32
-    sleep(0.5)
+    mot._d_msta.expected_value = "$x00xx0xx0xxx0xxx"
 
     mot._d_dir.value = post_dir
 
     # wait until the MSTA.POSITION (bit 6) is set and reset
-    sleep(0.5)
 
 
 @test_case

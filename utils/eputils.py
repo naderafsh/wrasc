@@ -557,6 +557,7 @@ class EpicsMotor:
         override_slims=False,
         expect_success=True,
         dial_direction=False,
+        block_until_done=True,
     ):
 
         if dial_direction and self.is_usr_dir_reversed():
@@ -589,6 +590,9 @@ class EpicsMotor:
 
         self._d_dmov.expected_value = 1
 
+        if not block_until_done:
+            return
+
         # and wait until dmov or timeout:
         if not timeout:
             # set timneout based on velocity
@@ -597,11 +601,13 @@ class EpicsMotor:
         sleep(0.1)
         start_time = time()
         back_str = ""
+        timed_out = False
         while not self._d_dmov.value:
             elapsed_time = time() - start_time
 
             if elapsed_time > timeout:
-                print(f"- timeout", end="")
+                print(f"  timeout", end="")
+                timed_out = True
                 break
 
             print(back_str, end="")
@@ -610,6 +616,8 @@ class EpicsMotor:
             print(elapsed_time_str, end="", flush=True)
             back_str = "\b" * len(elapsed_time_str)
         print("", end=" ")
+
+        return not timed_out
 
     def reset_expected_values(self, epvs=None):
         """resets all expected values to current values and sets them to non-strick

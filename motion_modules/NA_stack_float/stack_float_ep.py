@@ -61,12 +61,12 @@ if __name__ == "__main__":
     """
 
     est.tc_base_setting(mot)
-    est.tc_change_mres(mot, stop_at_fail=False)
-    est.tc_change_mscf(mot, stop_at_fail=False)
+    est.tc_change_mres(mot, pause_if_failed=False)
+    est.tc_change_mscf(mot, pause_if_failed=False)
     est.tc_base_setting(mot)
     # est.tc_move_to_lim(mot, move_dial_direction=1)
     est.tc_move_to_lim(mot, move_dial_direction=-1)
-    est.tc_home_on_mlim(mot, stop_at_fail=False)
+    est.tc_home_on_mlim(mot, pause_if_failed=False)
 
     # # manually home it here until HOMING is implemented:
 
@@ -77,8 +77,8 @@ if __name__ == "__main__":
     )
 
     # SFT_LMT tests
-    est.tc_softlim_inf(mot)
-    est.tc_softlims_llm_reject(mot)
+    est.tc_slims_set_inf(mot)
+    est.tc_slims_llm_reject(mot)
     est.tc_base_setting(mot)
     # small move to reset LVIO (soft limits)
     est.tc_move.__doc__ = """ A .VAL shall be accepted if
@@ -87,18 +87,19 @@ if __name__ == "__main__":
     - not within backlash distance of slims
     - 
     """
-    est.tc_small_move(mot, stop_at_fail=False, direction=1)
-    est.tc_softlims_hlm_reject(mot,)
+    est.tc_small_move(mot, direction=1)
+    est.tc_slims_hlm_reject(mot,)
     est.tc_base_setting(mot)
-    # small move to check baclash and LVIO (soft limits)
-    est.tc_small_move(mot, stop_at_fail=False, direction=-1)
-    est.tc_lls(mot)
+
+    est.tc_small_move(mot, direction=-1)
+    est.tc_slims_llm_change(mot, pause_if_failed=False)
     est.tc_base_setting(mot)
-    # small move to check baclash and LVIO (soft limits)
-    est.tc_small_move(mot, stop_at_fail=False, direction=1)
-    est.tc_hls(mot)
-    # small move to check baclash and LVIO (soft limits)
-    est.tc_small_move(mot, stop_at_fail=False, direction=-1)
+
+    est.tc_small_move(mot, direction=1)
+    est.tc_slims_hlm_change(mot, pause_if_failed=False)
+    est.tc_base_setting(mot)
+
+    est.tc_small_move(mot, direction=-1)
 
     # now test the user coord
     # USR_CRD_FNC
@@ -114,7 +115,8 @@ if __name__ == "__main__":
     est.tc_base_setting(mot)
     est.tc_stop(mot)
     est.tc_toggle_dir(mot)
-    est.tc_toggle_dir(mot, stop_at_fail=False)
+    est.tc_small_move(mot, direction=1)
+    est.tc_toggle_dir(mot)
     est.tc_base_setting(mot)
     est.tc_set_offset(mot, set_pos=-1)
     est.tc_base_setting(mot)
@@ -122,7 +124,7 @@ if __name__ == "__main__":
     # after these tests, we get to the point that the setpoints are rejected:
     # jog away from the mlim
 
-    est.tc_small_move(mot, stop_at_fail=False, direction=1)
+    est.tc_small_move(mot, direction=1)
 
     est.tc_move(mot, pos_inc=1, dial_direction=True)
 
