@@ -372,7 +372,9 @@ class EPV:
 
 
 class EpicsMotor:
-    def __init__(self, prefix, default_wait=0.5, base_settings=None,) -> None:
+    def __init__(
+        self, prefix, default_wait=0.5, base_settings=None, is_float_motrec=True
+    ) -> None:
         """[summary]
 
 
@@ -385,6 +387,7 @@ class EpicsMotor:
 
         self.travel_range = float(self.base_settings["fullrange_egu"])
         self.in_pos_band = float(self.base_settings["InPosBand"])
+        self.is_float_motrec = is_float_motrec
 
         self.prefix = prefix
 
@@ -409,7 +412,8 @@ class EpicsMotor:
             self._d_mres,
             self._d_dir,
             self._d_rdbd,
-        ] = list(map(EPV, [self.prefix] * 10))
+            self._d_rmp,
+        ] = list(map(EPV, [self.prefix] * 11))
 
         self.dialegu_epvs = [self._d_dval, self._d_drbv] = list(
             map(EPV, [self.prefix] * 2)
@@ -445,7 +449,11 @@ class EpicsMotor:
             self._d_jogr,
             self._c_homing,
             self._d_set,
-        ] = list(map(EPV, [self.prefix] * 5))
+            self._d_stop,
+        ] = list(map(EPV, [self.prefix] * 6))
+
+        if not self.is_float_motrec:
+            self._d_mscf = None
 
         self.epv_count = 0
         self.all_epvs = set([])
@@ -509,6 +517,7 @@ class EpicsMotor:
         self.velo_s = [
             self._d_velo,
             self._d_vmax,
+            self._d_bvel,
         ]
 
         self.soft_lim_s = [
@@ -538,7 +547,20 @@ class EpicsMotor:
                 # what else?
                 pass
 
-    def move(self, pos_inc=0, timeout=None, override_slims=False, expect_success=True):
+    def is_usr_dir_reversed(self):
+        return ((1 if self._d_dir.value == 0 else -1) * self._d_mscf.value) < 0
+
+    def move(
+        self,
+        pos_inc=0,
+        timeout=None,
+        override_slims=False,
+        expect_success=True,
+        dial_direction=False,
+    ):
+
+        if dial_direction and self.is_usr_dir_reversed():
+            pos_inc = -pos_inc
 
         self.pos_setpoint = self._d_rbv.value + pos_inc
 
@@ -560,6 +582,7 @@ class EpicsMotor:
             self._d_msta.expected_value = "$x00xx0xx0xxx0xxx"
             self._d_lls.expected_value = 0
             self._d_hls.expected_value = 0
+            self._d_lvio.expected_value = 0
 
         else:
             self._d_val.fail_if_unexpected = False
@@ -602,3 +625,7 @@ class EpicsMotor:
 
     if __name__ == "__main__":
         pass
+
+
+if __name__ == "__main__":
+    pass

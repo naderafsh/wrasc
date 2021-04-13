@@ -54,6 +54,8 @@ def verify_all(verify_epvs):
 def test_case(func):
     def function_wrapper(mot: et.EpicsMotor, **kwargs):
 
+        stop_at_fail = kwargs.pop("stop_at_fail", True)
+
         print(f"{func.__name__} {kwargs}", end=" ... ")
         logging.info(f"{func.__name__}\nDescription:\n{func.__doc__}")
         f_msg = func(mot, **kwargs)
@@ -63,19 +65,18 @@ def test_case(func):
             msg = f_msg + msg
         v_msg = "Outcome:\n" + ("  Not verified!" if not msg else msg)
         logging.info(f"\n{v_msg}")
-        sleep(0.25)
+        sleep(0.1)
         if passed:
             print("pass")
         else:
             print("FAIL")
 
-        stop_at_fail = kwargs.get("stop_at_fail", True)
         # wait for the user to interact
         if stop_at_fail and not passed:
             usr = input("press any key... [Abort]")
             if usr.upper() == "A":
                 print("Aborting.")
-                exit(1)
+                exit(0)
         return passed, v_msg
 
     return function_wrapper
@@ -104,8 +105,8 @@ def tc_base_setting(mot: et.EpicsMotor, **kwargs):
     mot._d_llm.value = 0 - mot.base_settings["fullrange_egu"] * (0.01)
 
     mot._d_set.value = 0
-
-    mot._d_dir.value = 1
+    # good to make all the tests direction agnostic!
+    mot._d_dir.value = 0
 
     mot.reset_expected_values()
 
@@ -136,9 +137,9 @@ def tc_move_to_lim(mot: et.EpicsMotor, **kwargs):
     """move to hardware mlim using preset range information (not JREV)
     """
 
-    dial_direction = kwargs.get("dial_direction", None)
+    move_dial_direction = kwargs.pop("move_dial_direction", None)
 
-    usr_direction = 2 * (0.5 - mot._d_dir.value) * dial_direction
+    usr_direction = 2 * (0.5 - mot._d_dir.value) * move_dial_direction
 
     # move indefinitely reverse towards mlim
     mot._d_lls.expected_value = 1 if usr_direction < 0 else 0
@@ -150,7 +151,7 @@ def tc_move_to_lim(mot: et.EpicsMotor, **kwargs):
 
     # move indefinitely reverse towards mlim
     mot._d_msta.expected_value = (
-        "$x10xx0xx0xxx0xxx" if dial_direction < -1 else "$x00xx0xx0xxx1xxx"
+        "$x10xx0xx0xxx0xxx" if move_dial_direction < -1 else "$x00xx0xx0xxx1xxx"
     )
 
     # wait for the flags to come back, in addition to motors default wait
@@ -178,7 +179,7 @@ def tc_change_offset(mot: et.EpicsMotor, **kwargs):
 
     assert mot._d_dmov.value
 
-    set_pos = kwargs.get("set_pos", 1)
+    set_pos = kwargs.pop("set_pos", 1)
 
     offset = set_pos - mot._d_rbv.value
 
@@ -201,9 +202,24 @@ def tc_change_offset(mot: et.EpicsMotor, **kwargs):
 
 @test_case
 def tc_move(mot: et.EpicsMotor, **kwargs):
-    """move incremental
+    """move incremental using .VAL
+
     """
     mot.move(**kwargs)
+
+
+@test_case
+def tc_small_move(mot: et.EpicsMotor, **kwargs):
+    """ A small move via changing .VAL shall be accepted if
+        - SPMG in Go or Move 
+        - distance allows for backlash
+        - not within backlash distance of slims
+        - more than mres value
+    """
+
+    dircetion = kwargs.pop("direction", 1)
+    jog_dist = dircetion * (mot._d_mres.value * 2 + mot._d_bdst.value * 2)
+    mot.move(pos_inc=jog_dist, **kwargs)
 
 
 @test_case
@@ -223,7 +239,17 @@ def tc_softlims_llm_reject(mot: et.EpicsMotor, **kwargs):
     requests outside the softlims shall be rejected
     """
 
-    pos_inc = kwargs.get("pos_inc", -1)
+    """    
+    A value of 1 indicates that the dial-value drive field, DVAL, 
+    or the dial-value readback field, DRBV, is outside of the limits (DHLM, DLLM), 
+    and this prevents the motor from moving. 
+    If the backlash distance, BDST, is non-zero, it further restricts the allowable 
+    range of DVAL. When a JOG button is hit, LVIO goes to 1 and stops the motor 
+    if/when DVAL gets to within one second's travel time of either limit
+
+    """
+
+    pos_inc = kwargs.pop("pos_inc", -1)
     # setting llm so that the requested move is outside the limit
     mot._d_llm.value = mot._d_rbv.value + pos_inc + mot._d_llm.default_tolerance
 
@@ -245,7 +271,7 @@ def tc_softlims_hlm_reject(mot: et.EpicsMotor, **kwargs):
     SFT_LMT
     requests outside the softlims shall be rejected
     """
-    pos_inc = kwargs.get("pos_inc", 1)
+    pos_inc = kwargs.pop("pos_inc", 1)
     mot._d_hlm.value = mot._d_rbv.value + pos_inc - mot._d_hlm.default_tolerance
 
     mot.move(pos_inc=pos_inc, override_slims=False, expect_success=False)
@@ -309,12 +335,14 @@ def tc_toggle_dir(mot: et.EpicsMotor, **kwargs):
        so that:
        1 - motion direction is reversed, meaning .DRBV -> -.DRBV
        2 - offset is chaged so that current readback value is unchanged
+       3 - motor stops
 
 
     """
 
     assert mot._d_dmov.value
 
+    sleep(0.5)
     post_dir = 1 - mot._d_dir.value
 
     dir_sign = 1 if post_dir == 0 else -1
@@ -326,12 +354,39 @@ def tc_toggle_dir(mot: et.EpicsMotor, **kwargs):
     mot._d_rbv.expected_value = mot._d_rbv.value
     mot._d_rdif.expected_value = mot._d_rdif.value
 
-    # no changes in the status ?
-    # an "unused bit of the MSTA actually changes!"
+    # direction changes stops the motor
 
-    mot._d_msta.expected_value = mot._d_msta.value
+    mot._d_msta.expected_value = int(mot._d_msta.value) & ~32
+    sleep(0.5)
 
     mot._d_dir.value = post_dir
+
+    # wait until the MSTA.POSITION (bit 6) is set and reset
+    sleep(0.5)
+
+
+@test_case
+def tc_stop(mot: et.EpicsMotor, **kwargs):
+    """STOP
+       verify that motor comes to stop in expected time
+    """
+    move_time = 0.5
+    pos_inc = mot._d_velo.value * 2 * move_time
+
+    mot._d_dmov.expected_value = 1
+
+    mot._d_rdif.expected_value = mot._d_rdif.value
+    mot._d_rbv.expected_value = mot._d_rbv.value + pos_inc / 2
+
+    mot._d_msta.expected_value = "$x00xx0xx0xxx0xxx"
+
+    mot.move(pos_inc=pos_inc)
+    sleep(move_time)  # almost half way through
+
+    mot._d_stop.value = 1
+    sleep(0.5)  # wait until .DMOV is on
+    # VAL will be syncved after STOP
+    mot._d_val.expected_value = mot._d_rbv.value
 
 
 @test_case
@@ -344,7 +399,7 @@ def tc_set_offset(mot: et.EpicsMotor, **kwargs):
     sleep(0.5)
     assert mot._d_dmov.value == 1
 
-    set_pos = kwargs.get("set_pos", 1)
+    set_pos = kwargs.pop("set_pos", 1)
 
     mot._d_val.expected_value = set_pos
     mot._d_off.expected_value = set_pos - mot._d_val.value + mot._d_off.value
@@ -355,3 +410,44 @@ def tc_set_offset(mot: et.EpicsMotor, **kwargs):
 
     mot._d_set.value = 1
     mot._d_val.value = set_pos
+
+
+@test_case
+def tc_change_mres(mot: et.EpicsMotor, **kwargs):
+    """USR_CRD_FNC
+        whan mres is used as scaler, then some pv's will scale with it.
+        when using a float motor record (is_float_motrec) then mres represents the minimal step move and has no scaling role.
+
+    """
+    change_factor = kwargs.pop("change_percent", 1.05)
+
+    for epv in mot.velo_s + [mot._d_rmp]:
+        epv.expected_value = epv.value * (1 if mot.is_float_motrec else change_factor)
+
+    mot._d_rbv
+
+    mot._d_mres.value *= change_factor
+
+
+@test_case
+def tc_change_mscf(mot: et.EpicsMotor, **kwargs):
+    """USR_CRD_FNC
+        whan mres is used as scaler, then some pv's will scale with it.
+        when using a float motor record (is_float_motrec) then mres represents the minimal step move and has no scaling role.
+        Changing .mscf shall scale velocities and sof_limits?
+
+    """
+
+    if not mot.is_float_motrec:
+        return
+
+    change_factor = kwargs.pop("change_percent", 1.05)
+
+    for epv in mot.velo_s + [mot._d_rmp]:
+        epv.expected_value = epv.value * change_factor
+
+    mot._d_mscf.value *= change_factor
+
+
+if __name__ == "__main__":
+    pass

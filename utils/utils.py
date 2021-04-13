@@ -336,3 +336,7 @@ def time_stamp(filename):
     name, ext = path.splitext(filename)
 
     return f"{name}_{create_time_str}{ext}"
+
+
+if __name__ == "__main__":
+    pass
