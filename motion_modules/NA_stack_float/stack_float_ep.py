@@ -18,7 +18,7 @@ from pathlib import Path
 
 import logging
 
-import utils.eptesting as est
+import utils.eptesting as etc
 
 # Prepare filepath to store logs
 logs_file_path = Path.cwd().joinpath("logs", "")
@@ -60,46 +60,46 @@ if __name__ == "__main__":
     - For both cases of a rejected setpoint, or an actual readback in violation of the limits, the field .LVIO must be set to 1. This field will be reset to 0 as soon as a new acceptable setpoint is put in.    
     """
 
-    est.tc_base_setting(mot)
-    est.tc_change_mres(mot, pause_if_failed=False)
-    est.tc_change_mscf(mot, pause_if_failed=False)
-    est.tc_base_setting(mot)
-    # est.tc_move_to_lim(mot, move_dial_direction=1)
-    est.tc_move_to_lim(mot, move_dial_direction=-1)
-    est.tc_home_on_mlim(mot, pause_if_failed=False)
+    etc.base_setting(mot)
+    etc.change_mres(mot, pause_if_failed=False)
+    etc.change_mscf(mot, pause_if_failed=False)
+    etc.base_setting(mot)
+    # est.move_to_lim(mot, move_dial_direction=1)
+    etc.move_to_lim(mot, move_dial_direction=-1)
+    etc.home_on_mlim(mot, pause_if_failed=False)
 
     # # manually home it here until HOMING is implemented:
 
-    est.tc_change_offset(mot, set_pos=-1)
+    etc.change_offset(mot, set_pos=-1)
 
-    est.tc_move(
+    etc.move(
         mot, pos_inc=5, override_slims=True, dial_direction=True,
     )
 
     # SFT_LMT tests
-    est.tc_slims_set_inf(mot)
-    est.tc_slims_llm_reject(mot)
-    est.tc_base_setting(mot)
+    etc.slims_set_inf(mot)
+    etc.slims_llm_reject(mot)
+    etc.base_setting(mot)
     # small move to reset LVIO (soft limits)
-    est.tc_move.__doc__ = """ A .VAL shall be accepted if
+    etc.move.__doc__ = """ A .VAL shall be accepted if
     - SPMG in Go or Move 
     - distance allows for backlash
     - not within backlash distance of slims
     - 
     """
-    est.tc_small_move(mot, direction=1)
-    est.tc_slims_hlm_reject(mot,)
-    est.tc_base_setting(mot)
+    etc.small_move(mot, direction=1)
+    etc.slims_hlm_reject(mot,)
+    etc.base_setting(mot)
 
-    est.tc_small_move(mot, direction=-1)
-    est.tc_slims_llm_change(mot, pause_if_failed=False)
-    est.tc_base_setting(mot)
+    etc.small_move(mot, direction=-1)
+    etc.slims_llm_change(mot, pause_if_failed=False)
+    etc.base_setting(mot)
 
-    est.tc_small_move(mot, direction=1)
-    est.tc_slims_hlm_change(mot, pause_if_failed=False)
-    est.tc_base_setting(mot)
+    etc.small_move(mot, direction=1)
+    etc.slims_hlm_change(mot, pause_if_failed=False)
+    etc.base_setting(mot)
 
-    est.tc_small_move(mot, direction=-1)
+    etc.small_move(mot, direction=-1)
 
     # now test the user coord
     # USR_CRD_FNC
@@ -112,19 +112,21 @@ if __name__ == "__main__":
     - All resulting changes shall be synced to the controller automatically and immediately, whenever applicable
     """
 
-    est.tc_base_setting(mot)
-    est.tc_stop(mot)
-    est.tc_toggle_dir(mot)
-    est.tc_small_move(mot, direction=1)
-    est.tc_toggle_dir(mot)
-    est.tc_base_setting(mot)
-    est.tc_set_offset(mot, set_pos=-1)
-    est.tc_base_setting(mot)
+    etc.base_setting(mot)
+    etc.stop(mot)
+    etc.toggle_dir(mot)
+    etc.small_move(mot, direction=1)
+    etc.toggle_dir(mot)
+    etc.base_setting(mot)
+    etc.set_offset(mot, set_pos=-1)
+    etc.base_setting(mot)
 
     # after these tests, we get to the point that the setpoints are rejected:
     # jog away from the mlim
 
-    est.tc_small_move(mot, direction=1)
+    etc.small_move(mot, direction=1)
 
-    est.tc_move(mot, pos_inc=1, dial_direction=True)
+    etc.move(mot, pos_inc=1, dial_direction=True)
+
+    etc.check_ferror(mot)
 

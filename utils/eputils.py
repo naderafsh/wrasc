@@ -404,7 +404,7 @@ class EpicsMotor:
         self.dot_epvs = [
             self._d_bdst,
             self._d_dval,
-            self._d_escf,
+            self._d_rscf,
             self._d_eres,
             self._d_jar,
             self._d_egu,
@@ -413,7 +413,8 @@ class EpicsMotor:
             self._d_dir,
             self._d_rdbd,
             self._d_rmp,
-        ] = list(map(EPV, [self.prefix] * 11))
+            self._d_rep,
+        ] = list(map(EPV, [self.prefix] * 12))
 
         self.dialegu_epvs = [self._d_dval, self._d_drbv] = list(
             map(EPV, [self.prefix] * 2)
@@ -451,6 +452,10 @@ class EpicsMotor:
             self._d_set,
             self._d_stop,
         ] = list(map(EPV, [self.prefix] * 6))
+
+        self.pmac_extra_s = [self._c_ferror, self._c_ferrormax] = list(
+            map(EPV, [self.prefix] * 2)
+        )
 
         if not self.is_float_motrec:
             self._d_mscf = None
@@ -531,7 +536,11 @@ class EpicsMotor:
         ]
 
         self.verify_epvs = set(
-            self.usr_coord_setting_s + self.velo_s + self.usregu_epvs + self.status_epvs
+            self.usr_coord_setting_s
+            + self.velo_s
+            + self.usregu_epvs
+            + self.status_epvs
+            + self.pmac_extra_s,
         )
 
     def set_def_tol(self):

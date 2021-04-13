@@ -83,7 +83,7 @@ def test_case(func):
 
 
 @test_case
-def tc_base_setting(mot: et.EpicsMotor, **kwargs):
+def base_setting(mot: et.EpicsMotor, **kwargs):
     """  set/reset to the baseline settings and reset all expected values
     """
 
@@ -92,11 +92,16 @@ def tc_base_setting(mot: et.EpicsMotor, **kwargs):
     # to check if the motor is initialised with no faults:
     mot._d_mres.value = 1 / 200 / 32
     mot._d_mscf.value = mot.base_settings["motor_unit_per_rev"]
+
+    mot._d_eres.value = mot.base_settings["encoder_res"]
+    mot._d_rscf.value = mot.base_settings["encoder_res"]
     # mot._d_off.value = 0
 
     mot._d_vmax.value = mot.base_settings["JogSpeed_EGU"]
     mot._d_velo.value = mot._d_vmax.value - mot._d_velo.default_tolerance * 5
     mot._d_bvel.value = mot._d_velo.value / 2
+
+    mot._d_bdst.value = 0
 
     # a baseline tweak is set to take less than 100ms to complete
     mot._d_twv.value = mot._d_velo.value * 0.05
@@ -112,7 +117,7 @@ def tc_base_setting(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_move_to_mlim(mot: et.EpicsMotor, **kwargs):
+def move_to_mlim(mot: et.EpicsMotor, **kwargs):
     """move to hardware mlim using preset range information (not JREV)
     """
     # move indefinitely reverse towards mlim
@@ -133,7 +138,7 @@ def tc_move_to_mlim(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_move_to_lim(mot: et.EpicsMotor, **kwargs):
+def move_to_lim(mot: et.EpicsMotor, **kwargs):
     """move to hardware mlim using preset range information (not JREV)
     """
 
@@ -159,7 +164,7 @@ def tc_move_to_lim(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_home_on_mlim(mot: et.EpicsMotor, **kwargs):
+def home_on_mlim(mot: et.EpicsMotor, **kwargs):
     """home using extras
     """
     mot._d_hls.expected_value = 0
@@ -170,7 +175,7 @@ def tc_home_on_mlim(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_change_offset(mot: et.EpicsMotor, **kwargs):
+def change_offset(mot: et.EpicsMotor, **kwargs):
     """USR_CRD_FNC
        change offset value (directly) to match the input [set_pos]
        ( not using .SET mechanism )
@@ -201,7 +206,7 @@ def tc_change_offset(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_move(mot: et.EpicsMotor, **kwargs):
+def move(mot: et.EpicsMotor, **kwargs):
     """move incremental using .VAL
 
     """
@@ -209,7 +214,7 @@ def tc_move(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_small_move(mot: et.EpicsMotor, **kwargs):
+def small_move(mot: et.EpicsMotor, **kwargs):
     """ A small move via changing .VAL shall be accepted if
         - SPMG in Go or Move 
         - distance allows for backlash
@@ -228,7 +233,7 @@ def tc_small_move(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_slims_set_inf(mot: et.EpicsMotor, **kwargs):
+def slims_set_inf(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     softlims set to inf
@@ -238,7 +243,7 @@ def tc_slims_set_inf(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_slims_llm_reject(mot: et.EpicsMotor, **kwargs):
+def slims_llm_reject(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     requests outside the softlims shall be rejected
@@ -271,7 +276,7 @@ def tc_slims_llm_reject(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_slims_hlm_reject(mot: et.EpicsMotor, **kwargs):
+def slims_hlm_reject(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     requests outside the softlims shall be rejected
@@ -292,7 +297,7 @@ def tc_slims_hlm_reject(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_slims_llm_change(mot: et.EpicsMotor, **kwargs):
+def slims_llm_change(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     when softlimit is changed so that current position is out of softlimit range
@@ -316,7 +321,7 @@ def tc_slims_llm_change(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_slims_hlm_change(mot: et.EpicsMotor, **kwargs):
+def slims_hlm_change(mot: et.EpicsMotor, **kwargs):
     """
     SFT_LMT
     when softlimit is changed so that current position is out of softlimit range
@@ -340,7 +345,7 @@ def tc_slims_hlm_change(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_toggle_dir(mot: et.EpicsMotor, **kwargs):
+def toggle_dir(mot: et.EpicsMotor, **kwargs):
     """USR_CRD_FNC
        toggle .DIR (directly) 
        
@@ -376,7 +381,7 @@ def tc_toggle_dir(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_stop(mot: et.EpicsMotor, **kwargs):
+def stop(mot: et.EpicsMotor, **kwargs):
     """STOP
        verify that motor comes to stop in expected time
     """
@@ -400,7 +405,7 @@ def tc_stop(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_set_offset(mot: et.EpicsMotor, **kwargs):
+def set_offset(mot: et.EpicsMotor, **kwargs):
     """USR_CRD_FNC
        set user offset using .SET so that .VAL matches tuser request [set_pos]
        ( this is using .SET mechanism)
@@ -423,10 +428,11 @@ def tc_set_offset(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_change_mres(mot: et.EpicsMotor, **kwargs):
+def change_mres(mot: et.EpicsMotor, **kwargs):
     """USR_CRD_FNC
-        whan mres is used as scaler, then some pv's will scale with it.
-        when using a float motor record (is_float_motrec) then mres represents the minimal step move and has no scaling role.
+        In int32 motrecs where .MRES is also a scaler, then velocities shall scale accordingly when it is changed
+        In a float64 motor record (is_float_motrec) .MRES represents the minimal step move and has no scaling role, 
+        therefore nothing should be scaled when .MRES is changed but velocities shall scale with .MSCF
 
     """
     change_factor = kwargs.pop("change_percent", 1.05)
@@ -440,11 +446,11 @@ def tc_change_mres(mot: et.EpicsMotor, **kwargs):
 
 
 @test_case
-def tc_change_mscf(mot: et.EpicsMotor, **kwargs):
+def change_mscf(mot: et.EpicsMotor, **kwargs):
     """USR_CRD_FNC
-        whan mres is used as scaler, then some pv's will scale with it.
-        when using a float motor record (is_float_motrec) then mres represents the minimal step move and has no scaling role.
-        Changing .mscf shall scale velocities and sof_limits?
+        In int32 motrecs where .MRES is also a scaler, then velocities shall scale accordingly when it is changed
+        In a float64 motor record (is_float_motrec) .MRES represents the minimal step move and has no scaling role, 
+        therefore nothing should be scaled when .MRES is changed but velocities shall scale with .MSCF
 
     """
 
@@ -457,6 +463,30 @@ def tc_change_mscf(mot: et.EpicsMotor, **kwargs):
         epv.expected_value = epv.value * change_factor
 
     mot._d_mscf.value *= change_factor
+
+
+@test_case
+def check_ferror(mot: et.EpicsMotor, **kwargs):
+    """ENCODER READBACK
+        ppmac driver has the facility to use an additional encoder and monitor 
+        the reporting position as a reference. The difference of this "readback" to the actual 
+        primary motor position as reported by the controller, is calculated at epics rate into :FERROR
+
+    """
+
+    change_factor = kwargs.pop("change_percent", 1.05)
+
+    mot_scaler_epv = mot._d_mscf if mot.is_float_motrec else mot._d_mres
+    enc_scaler_epv = mot._d_rscf if mot.is_float_motrec else mot._d_eres
+
+    enc_scaler_epv.expected_value = enc_scaler_epv.value * change_factor
+
+    mot._c_ferror.expected_value = abs(
+        mot._d_rmp.value * mot_scaler_epv.value
+        - mot._d_rep.value * enc_scaler_epv.expected_value
+    )
+
+    enc_scaler_epv.value *= change_factor
 
 
 if __name__ == "__main__":
