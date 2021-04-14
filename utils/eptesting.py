@@ -57,7 +57,7 @@ def test_case(func):
         pause_if_failed = kwargs.pop("pause_if_failed", True)
 
         print(f"{func.__name__} {kwargs}", end=" ... ")
-        logging.info(f"{func.__name__}\nDescription:\n{func.__doc__}")
+        logging.info(f"{func.__name__} {kwargs}\nDescription:\n{func.__doc__}")
         f_msg = func(mot, **kwargs)
         sleep(mot.default_wait)
         passed, msg = verify_all(mot.verify_epvs)
@@ -65,11 +65,12 @@ def test_case(func):
             msg = f_msg + msg
         v_msg = "Outcome:\n" + ("  Not verified!" if not msg else msg)
         logging.info(f"\n{v_msg}")
-        sleep(0.1)
         if passed:
             print("pass")
         else:
             print("FAIL")
+
+        sleep(0.1)
 
         # wait for the user to interact
         if pause_if_failed and not passed:
@@ -90,7 +91,15 @@ def base_setting(mot: et.EpicsMotor, **kwargs):
     mot._d_lvio.expected_value = 0
 
     # to check if the motor is initialised with no faults:
-    mot._d_mres.value = 1 / 200 / 32
+    realistic_microsteps = 32
+    mot._d_mres.value = (
+        mot.base_settings["mres"]
+        * mot.base_settings["micro_steps"]
+        / realistic_microsteps
+    )
+
+    mot._d_rdbd = mot._d_mres
+
     mot._d_mscf.value = mot.base_settings["motor_unit_per_rev"]
 
     mot._d_eres.value = mot.base_settings["encoder_res"]
@@ -112,6 +121,9 @@ def base_setting(mot: et.EpicsMotor, **kwargs):
     mot._d_set.value = 0
     # good to make all the tests direction agnostic!
     mot._d_dir.value = 0
+
+    mot._d_set.value = 0
+    mot._d_foff.value = 0
 
     mot.reset_expected_values()
 
@@ -228,8 +240,13 @@ def small_move(mot: et.EpicsMotor, **kwargs):
     """
 
     direction = kwargs.pop("direction", 1)
-    jog_dist = direction * (mot._d_mres.value * 2 + mot._d_bdst.value * 2)
+    jog_dist = (
+        direction * max(mot._d_mres.value, mot._d_rdbd.value, mot._d_bdst.value) * 1.05
+    )
+
     mot.move(pos_inc=jog_dist, **kwargs)
+
+    mot._d_rbv.tolerance = mot._d_mres.value
 
 
 @test_case
@@ -487,6 +504,47 @@ def check_ferror(mot: et.EpicsMotor, **kwargs):
     )
 
     enc_scaler_epv.value *= change_factor
+
+
+@test_case
+def push_pos(mot: et.EpicsMotor, **kwargs):
+    """PUSH POSITION TO CONTROLLER
+        this feature may not work with ppmac!
+
+    """
+
+    change_pos = 2 * mot._d_mres.value + 1
+
+    mot._d_set.value = 1
+    mot._d_foff.value = 1
+
+    # now, any value set to .VAL shalll be pushed to the controller to change the position w/o changing offset
+
+    mot._d_off.expected_value = mot._d_off.value
+    mot._d_rbv.expected_value = mot._d_rbv.value + change_pos
+
+    mot._d_rdif.expected_value = 0
+    mot._d_msta.expected_value = "$x00xx0xx0xxx0xxx"
+
+    # mot._c_ferror.expected_value =
+
+    # mot_scaler_epv = mot._d_mscf if mot.is_float_motrec else mot._d_mres
+    # enc_scaler_epv = mot._d_rscf if mot.is_float_motrec else mot._d_eres
+
+    sleep(0.1)
+    mot._d_val.value += change_pos
+
+
+@test_case
+def scaling_req(mot: et.EpicsMotor, **kwargs):
+    """CHANGE OF SCALING
+
+    """
+    passed1, msg1 = change_mres(mot, **kwargs)
+    passed2, msg2 = change_mscf(mot, **kwargs)
+    mot.reset_expected_values()
+
+    return passed1 and passed2, msg1 + msg2
 
 
 if __name__ == "__main__":

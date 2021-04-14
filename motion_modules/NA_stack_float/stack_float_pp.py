@@ -22,7 +22,7 @@ if __name__ == "__main__":
     # tst["ppmac_hostname"] = "10.23.220.232"
     # tst["ppmac_is_backward"] = True
 
-    motor_id = "Mot_A"
+    motor_id = "Mot_pp2"
     tst = set_test_params(tst, motor_id)
 
     ol_test = OLRdbLim2Lim(tst=tst, motor_id=motor_id, _VERBOSE_=2)
@@ -53,12 +53,12 @@ if __name__ == "__main__":
             is_positive_jog = is_big_jog == overall_positive
 
             if is_big_jog:
-                jog_dest = jog_dest + tst["Mot_A"]["bigjog_steps"] * (
+                jog_dest = jog_dest + tst["Mot_pp2"]["bigjog_steps"] * (
                     1 if is_positive_jog else -1
                 )
             else:
                 jog_dest = jog_dest + (
-                    tst["Mot_A"]["bigjog_steps"] - tst["Mot_A"]["smalljog_steps"]
+                    tst["Mot_pp2"]["bigjog_steps"] - tst["Mot_pp2"]["smalljog_steps"]
                 ) * (1 if is_positive_jog else -1)
 
             ppra.do_ags(
@@ -77,19 +77,19 @@ if __name__ == "__main__":
         ppra.do_ags(ol_test.ma_slide_off_plim_ag)
 
         n = 0
-        jog_dest = tst["Mot_A"]["fullrange_steps"]
+        jog_dest = tst["Mot_pp2"]["fullrange_steps"]
         overall_positive = False
         while n < max_loop:
             is_big_jog = (n % 2) == 0
             is_positive_jog = is_big_jog == overall_positive
 
             if is_big_jog:
-                jog_dest = jog_dest + tst["Mot_A"]["bigjog_steps"] * (
+                jog_dest = jog_dest + tst["Mot_pp2"]["bigjog_steps"] * (
                     1 if is_positive_jog else -1
                 )
             else:
                 jog_dest = jog_dest + (
-                    tst["Mot_A"]["bigjog_steps"] - tst["Mot_A"]["smalljog_steps"]
+                    tst["Mot_pp2"]["bigjog_steps"] - tst["Mot_pp2"]["smalljog_steps"]
                 ) * (1 if is_positive_jog else -1)
 
             ppra.do_ags(

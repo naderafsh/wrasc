@@ -451,7 +451,9 @@ class EpicsMotor:
             self._c_homing,
             self._d_set,
             self._d_stop,
-        ] = list(map(EPV, [self.prefix] * 6))
+            self._d_foff,
+            self._d_rdbd,
+        ] = list(map(EPV, [self.prefix] * 8))
 
         self.pmac_extra_s = [self._c_ferror, self._c_ferrormax] = list(
             map(EPV, [self.prefix] * 2)

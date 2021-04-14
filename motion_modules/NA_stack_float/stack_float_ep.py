@@ -46,9 +46,10 @@ if __name__ == "__main__":
     # tst["ppmac_hostname"] = "10.23.220.232"
     # tst["ppmac_is_backward"] = True
 
-    motor_id = "Mot_A"
+    motor_id = "Mot_pp2"
+    motor_record = tst[motor_id]["ID"]
     tst = set_test_params(tst, motor_id)
-    mot = et.EpicsMotor("CIL:MOT2", base_settings=tst[motor_id])
+    mot = et.EpicsMotor(motor_record, base_settings=tst[motor_id])
 
     """
     - Soft Limits shall be accessible by @scientist at any circumstances
@@ -60,9 +61,17 @@ if __name__ == "__main__":
     - For both cases of a rejected setpoint, or an actual readback in violation of the limits, the field .LVIO must be set to 1. This field will be reset to 0 as soon as a new acceptable setpoint is put in.    
     """
 
+    logging.info(
+        3 * "\n====================================\n"
+        + f"Running tests for {motor_id}, epcics: {motor_record} :"
+    )
+
     etc.base_setting(mot)
     etc.change_mres(mot, pause_if_failed=False)
     etc.change_mscf(mot, pause_if_failed=False)
+
+    # etc.scaling_req(mot, pause_if_failed=False)
+
     etc.base_setting(mot)
     # est.move_to_lim(mot, move_dial_direction=1)
     etc.move_to_lim(mot, move_dial_direction=-1)
@@ -112,14 +121,14 @@ if __name__ == "__main__":
     - All resulting changes shall be synced to the controller automatically and immediately, whenever applicable
     """
 
-    etc.base_setting(mot)
+    mot.reset_expected_values()
     etc.stop(mot)
     etc.toggle_dir(mot)
     etc.small_move(mot, direction=1)
     etc.toggle_dir(mot)
-    etc.base_setting(mot)
+    mot.reset_expected_values()
     etc.set_offset(mot, set_pos=-1)
-    etc.base_setting(mot)
+    mot.reset_expected_values()
 
     # after these tests, we get to the point that the setpoints are rejected:
     # jog away from the mlim
@@ -128,5 +137,9 @@ if __name__ == "__main__":
 
     etc.move(mot, pos_inc=1, dial_direction=True)
 
-    etc.check_ferror(mot)
+    etc.check_ferror(mot, pause_if_failed=False)
+
+    etc.push_pos(mot, pause_if_failed=False)
+
+    etc.base_setting(mot)
 
