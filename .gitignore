@@ -1,1 +1,70 @@
-poetry.lock, README.rst, *.pyc, *.pyo
+*.lock
+PBTools
+# my own dump
+*_dump
+*_out
+*_local
+
+# VSCode
+*vscode
+*vscode*
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# C extensions
+*.so
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.tox/
+.coverage
+.cache
+nosetests.xml
+coverage.xml
+
+# Translations
+*.mo
+
+# Mr Developer
+.mr.developer.cfg
+.project
+.pydevproject
+
+# Rope
+.ropeproject
+
+# Django stuff:
+*.log
+*.pot
+
+# Sphinx documentation
+docs/_build/
+examples/streamlit-test.py
+examples/data/ppmac_base_config.cfg.bak
+test2.gat
+test2.rep
+examples/data/config_compares.WinMerge
+ppmacTestScript.py
+ppmac/gpascii_connect_.py
+ppmac/ppmac#1_connect_.py
+sg_out.7z

@@ -1,0 +1,92 @@
+Mot_pp2:
+  ID: CIL:MOT2
+  
+  # CHANNEL SPEC
+  axis_no: 2
+  L1: 2
+  L2: 0
+  L3: 1
+  L4: 0
+  L5: 1
+  L6: 1
+  L7: 10
+
+  # TEST SPECS
+  JogSpeed_EGU: 4 # revs/sec
+  HomeOffset_EGU: 0.1
+  HomeVel_EGU: 0.8
+
+  attackpos_egu: 2
+  slideoff_steps: 0.1
+  
+  smalljog_egu: 49
+  bigjog_egu: 50
+  jog_settle_time: 4
+  limit_settle_time: 4
+  
+  # MOTOR UNIT  
+  motor_unit_per_rev: 1 # supply this when mu is scaled in the controller. 
+  overall_egu_per_rev: 1
+  fullrange_egu: 105
+  fullsteps_per_rev: 200
+  micro_steps: 512
+  # READBACK ENCODER
+  encoder_res: 5.0e-05
+  encoder_reversed: true
+
+  InPosBand : 0.005
+
+Mot_tp1:
+  ID: WORKSHOP01:MOT1
+  
+  # CHANNEL SPEC
+  axis_no: 1
+  L1: 1
+  L2: 0
+  L3: 0
+  L4: 0
+  L5: 0
+  L6: 0
+  L7: 9
+
+  # TEST SPECS
+  JogSpeed_EGU: 2 # revs/sec
+  HomeOffset_EGU: 0.1
+  HomeVel_EGU: 0.8
+
+  attackpos_egu: 2
+  slideoff_steps: 0.1
+  
+  smalljog_egu: 49
+  bigjog_egu: 50
+  jog_settle_time: 4
+  limit_settle_time: 4
+  
+  # MOTOR UNIT  
+  # motor_unit_per_rev: 1 # supply this when mu is scaled in the controller. 
+  overall_egu_per_rev: 2
+  fullrange_egu: 105
+  fullsteps_per_rev: 400
+  micro_steps: 32
+  # READBACK ENCODER
+  encoder_res: 0.000625000000
+  encoder_reversed: false
+
+  InPosBand : 0.005
+
+
+  
+# GLOBAL SETTINGS
+clearance_egu: 3
+loop_repeats: 2
+wrasc_cycle_period: 0.25
+
+csv_out_folder: autest_out/
+ppglobal_fname: motion_modules/NA_stack_float/pp_global.sym
+baseconfig_fname: motion_modules/data/ppmac_base_config.cfg
+baseconfig_download: false
+sysconfig_fname: motion_modules/data/systemsetup.cfg
+sysconfig_download: false
+
+ppmac_hostname: 10.23.92.220
+ppmac_is_backward: false

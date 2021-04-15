@@ -1,0 +1,42 @@
+Mot_Inner:
+  ID: SGON_M3
+  L1: 3
+  L2: 0
+  L3: 2
+  L4: 0
+  L5: 2
+  L6: 2
+  L7: 11
+  
+  EGU: um
+  HomeVel: 1
+  JogSpeed: 5  
+  slideoff_egu: 1000
+  limit_settle_time: 2
+  jog_settle_time: 1
+
+Mot_Outer:
+  ID: SGON_M4
+  L1: 4
+  L2: 0
+  L3: 3
+  L4: 0
+  L5: 3
+  L6: 3
+  L7: 12
+  
+  EGU: um
+  HomeVel: 1
+  JogSpeed: 5  
+  slideoff_egu: 1500
+  limit_settle_time: 2
+  jog_settle_time: 1
+
+
+clearance_egu: 10
+
+verbose_level: 1
+loop_repeats: 5
+ppmac_hostname: 10.109.25.22
+ppmac_is_backward: true
+wrasc_cycle_period: 0.25

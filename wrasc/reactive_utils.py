@@ -35,28 +35,28 @@ import numpy as np
 
 
 class myEsc:
-    PURPLE = '\033[95m'
-    CYAN = '\033[96m'
-    DARKCYAN = '\033[36m'
-    BLUE = '\033[94m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
-    JUMP = '\033[2J\033[1;1H'
-    SAVE = '\033[s'
-    REST = '\033[u'
+    PURPLE = "\033[95m"
+    CYAN = "\033[96m"
+    DARKCYAN = "\033[36m"
+    BLUE = "\033[94m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+    END = "\033[0m"
+    JUMP = "\033[2J\033[1;1H"
+    SAVE = "\033[s"
+    REST = "\033[u"
 
-    ERROR = RED + 'ERROR: '
-    WARNING = YELLOW + 'WARNING: '
-    SUCCESS = GREEN + 'SUCCESS: '
+    ERROR = RED + "ERROR: "
+    WARNING = YELLOW + "WARNING: "
+    SUCCESS = GREEN + "SUCCESS: "
     SILENT_WARNING = YELLOW
 
 
 def cls():
-    os.system('cls' if os.name == 'nt' else 'clear')
+    os.system("cls" if os.name == "nt" else "clear")
 
 
 def move_cursor(y, x):
